@@ -1,480 +1,803 @@
-import React, { useState, useEffect, useRef } from 'react';
-
-const QRCompassApp = () => {
-  const [step, setStep] = useState('scan');
-  const [target, setTarget] = useState(null);
-  const [userLocation, setUserLocation] = useState(null);
-  const [heading, setHeading] = useState(0);
-  const [distance, setDistance] = useState(0);
-  const [bearing, setBearing] = useState(0);
-  const [permissionStatus, setPermissionStatus] = useState('');
-  const [cameraError, setCameraError] = useState(false);
-  const videoRef = useRef(null);
-  const canvasRef = useRef(null);
-  const streamRef = useRef(null);
-
-  const calculateDistance = (lat1, lon1, lat2, lon2) => {
-    const R = 6371000;
-    const phi1 = lat1 * Math.PI / 180;
-    const phi2 = lat2 * Math.PI / 180;
-    const deltaPhi = (lat2 - lat1) * Math.PI / 180;
-    const deltaLambda = (lon2 - lon1) * Math.PI / 180;
-
-    const a = Math.sin(deltaPhi/2) * Math.sin(deltaPhi/2) +
-              Math.cos(phi1) * Math.cos(phi2) *
-              Math.sin(deltaLambda/2) * Math.sin(deltaLambda/2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-
-    return R * c;
-  };
-
-  const calculateBearing = (lat1, lon1, lat2, lon2) => {
-    const phi1 = lat1 * Math.PI / 180;
-    const phi2 = lat2 * Math.PI / 180;
-    const deltaLambda = (lon2 - lon1) * Math.PI / 180;
-
-    const y = Math.sin(deltaLambda) * Math.cos(phi2);
-    const x = Math.cos(phi1) * Math.sin(phi2) -
-              Math.sin(phi1) * Math.cos(phi2) * Math.cos(deltaLambda);
-    
-    const theta = Math.atan2(y, x);
-    return (theta * 180 / Math.PI + 360) % 360;
-  };
-
-  const getThemeFromDistance = (dist) => {
-    const maxDist = 1000; // 1km = congelado, 0m = fuego
-    const minDist = 10; // menos de 10m = llegaste
-    
-    if (dist <= minDist) {
-      return {
-        name: 'fire',
-        bg: 'bg-black',
-        intensity: 1
-      };
-    }
-    
-    const progress = Math.max(0, Math.min(1, 1 - (dist / maxDist)));
-    
-    if (progress < 0.33) {
-      return {
-        name: 'frozen',
-        bg: `rgba(15, 23, 42, ${0.95 - progress})`,
-        intensity: progress / 0.33
-      };
-    } else if (progress < 0.66) {
-      return {
-        name: 'melting',
-        bg: `linear-gradient(135deg, 
-          rgba(30, 58, 138, ${1 - progress}), 
-          rgba(120, 53, 15, ${progress}))`,
-        intensity: (progress - 0.33) / 0.33
-      };
-    } else {
-      return {
-        name: 'hot',
-        bg: `linear-gradient(135deg, 
-          rgba(153, 27, 27, ${progress}), 
-          rgba(217, 119, 6, ${progress}))`,
-        intensity: (progress - 0.66) / 0.34
-      };
-    }
-  };
-
-  const startCamera = async () => {
-    try {
-      setPermissionStatus('Solicitando permiso de cámara...');
-      setCameraError(false);
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'environment' }
-      });
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        streamRef.current = stream;
-        setPermissionStatus('Cámara activada - Escanea un QR');
-      }
-    } catch (err) {
-      console.error('Error al acceder a la cámara:', err);
-      setPermissionStatus('Error: No se pudo acceder a la cámara');
-      setCameraError(true);
-    }
-  };
-
-  const stopCamera = () => {
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop());
-      streamRef.current = null;
-    }
-  };
-
-  const useExampleCoordinates = () => {
-    setTarget({ lat: 40.7589, lon: -73.9851, name: 'Times Square, NY' });
-    stopCamera();
-    setStep('compass');
-  };
-
-  const requestOrientationPermission = async () => {
-    if (typeof DeviceOrientationEvent !== 'undefined' && 
-        typeof DeviceOrientationEvent.requestPermission === 'function') {
-      try {
-        const permission = await DeviceOrientationEvent.requestPermission();
-        if (permission === 'granted') {
-          setPermissionStatus('Sensores activados');
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Brújula QR</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
         }
-      } catch (err) {
-        console.error('Error al solicitar permiso de orientación:', err);
-      }
-    }
-  };
 
-  useEffect(() => {
-    if (step === 'compass') {
-      setPermissionStatus('Obteniendo ubicación...');
-      const watchId = navigator.geolocation.watchPosition(
-        (position) => {
-          setUserLocation({
-            lat: position.coords.latitude,
-            lon: position.coords.longitude
-          });
-          setPermissionStatus('Ubicación obtenida');
-        },
-        (error) => {
-          console.error('Error obteniendo ubicación:', error);
-          setPermissionStatus('Error: Activa la ubicación en tu dispositivo');
-        },
-        { enableHighAccuracy: true, maximumAge: 0, timeout: 5000 }
-      );
-
-      return () => navigator.geolocation.clearWatch(watchId);
-    }
-  }, [step]);
-
-  useEffect(() => {
-    if (step === 'compass') {
-      const handleOrientation = (event) => {
-        if (event.alpha !== null) {
-          setHeading(360 - event.alpha);
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            overflow: hidden;
         }
-      };
 
-      window.addEventListener('deviceorientationabsolute', handleOrientation, true);
-      window.addEventListener('deviceorientation', handleOrientation, true);
+        #app {
+            min-height: 100vh;
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 1rem;
+            transition: background 0.5s ease;
+        }
 
-      return () => {
-        window.removeEventListener('deviceorientationabsolute', handleOrientation, true);
-        window.removeEventListener('deviceorientation', handleOrientation, true);
-      };
-    }
-  }, [step]);
+        .frost-overlay {
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.5s ease;
+        }
 
-  useEffect(() => {
-    if (userLocation && target) {
-      const dist = calculateDistance(
-        userLocation.lat,
-        userLocation.lon,
-        target.lat,
-        target.lon
-      );
-      setDistance(Math.round(dist));
+        .frost-corner {
+            position: absolute;
+            background: radial-gradient(circle, rgba(255, 255, 255, 0.6) 0%, transparent 70%);
+            filter: blur(20px);
+        }
 
-      const bear = calculateBearing(
-        userLocation.lat,
-        userLocation.lon,
-        target.lat,
-        target.lon
-      );
-      setBearing(bear);
-    }
-  }, [userLocation, target]);
+        .frost-corner.top-left {
+            top: 0;
+            left: 0;
+            width: 8rem;
+            height: 8rem;
+        }
 
-  useEffect(() => {
-    if (step === 'scan') {
-      startCamera();
-      return () => {
-        stopCamera();
-      };
-    }
-  }, [step]);
+        .frost-corner.top-right {
+            top: 0;
+            right: 0;
+            width: 10rem;
+            height: 10rem;
+        }
 
-  const compassRotation = bearing - heading;
-  const showOrientationButton = typeof DeviceOrientationEvent !== 'undefined' && 
-                                typeof DeviceOrientationEvent.requestPermission === 'function';
+        .frost-corner.bottom-left {
+            bottom: 0;
+            left: 0;
+            width: 9rem;
+            height: 9rem;
+        }
 
-  const theme = step === 'compass' ? getThemeFromDistance(distance) : null;
+        .frost-corner.bottom-right {
+            bottom: 0;
+            right: 0;
+            width: 11rem;
+            height: 11rem;
+        }
 
-  return (
-    <div className="min-h-screen relative overflow-hidden" style={{
-      background: step === 'scan' ? '#000000' : (theme?.name === 'fire' ? '#000000' : theme?.bg)
-    }}>
-      {step === 'compass' && theme && (
-        <>
-          {theme.name === 'frozen' && (
-            <>
-              <div className="absolute inset-0 opacity-30" style={{
-                backgroundImage: `radial-gradient(circle at 20% 20%, rgba(219, 234, 254, ${0.3 * (1 - theme.intensity)}) 0%, transparent 50%),
-                                 radial-gradient(circle at 80% 80%, rgba(219, 234, 254, ${0.3 * (1 - theme.intensity)}) 0%, transparent 50%),
-                                 radial-gradient(circle at 40% 60%, rgba(191, 219, 254, ${0.2 * (1 - theme.intensity)}) 0%, transparent 40%)`
-              }}></div>
-              
-              <div className="absolute top-0 left-0 w-32 h-32 opacity-40" style={{
-                background: `radial-gradient(circle, rgba(255, 255, 255, ${0.6 * (1 - theme.intensity)}) 0%, transparent 70%)`,
-                filter: 'blur(20px)'
-              }}></div>
-              <div className="absolute top-0 right-0 w-40 h-40 opacity-40" style={{
-                background: `radial-gradient(circle, rgba(255, 255, 255, ${0.5 * (1 - theme.intensity)}) 0%, transparent 70%)`,
-                filter: 'blur(25px)'
-              }}></div>
-              <div className="absolute bottom-0 left-0 w-36 h-36 opacity-40" style={{
-                background: `radial-gradient(circle, rgba(255, 255, 255, ${0.55 * (1 - theme.intensity)}) 0%, transparent 70%)`,
-                filter: 'blur(22px)'
-              }}></div>
-              <div className="absolute bottom-0 right-0 w-44 h-44 opacity-40" style={{
-                background: `radial-gradient(circle, rgba(255, 255, 255, ${0.65 * (1 - theme.intensity)}) 0%, transparent 70%)`,
-                filter: 'blur(28px)'
-              }}></div>
-            </>
-          )}
-
-          {theme.name === 'melting' && (
-            <>
-              <div className="absolute inset-0 opacity-20" style={{
-                background: `radial-gradient(circle at 50% 50%, rgba(251, 191, 36, ${0.3 * theme.intensity}) 0%, transparent 70%)`
-              }}></div>
-            </>
-          )}
-
-          {theme.name === 'hot' && (
-            <>
-              <div className="absolute inset-0 opacity-30" style={{
-                background: `radial-gradient(circle at 50% 50%, rgba(220, 38, 38, ${0.4 * theme.intensity}) 0%, rgba(217, 119, 6, ${0.3 * theme.intensity}) 50%, transparent 80%)`
-              }}></div>
-            </>
-          )}
-
-          {theme.name === 'fire' && (
-            <div className="absolute inset-0 flex items-center justify-center">
-              <div className="flame-container">
-                <div className="flame flame-1"></div>
-                <div className="flame flame-2"></div>
-                <div className="flame flame-3"></div>
-                <div className="flame flame-4"></div>
-                <div className="flame flame-5"></div>
-              </div>
-            </div>
-          )}
-        </>
-      )}
-
-      <style>{`
         .flame-container {
-          position: relative;
-          width: 300px;
-          height: 400px;
+            position: absolute;
+            inset: 0;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            pointer-events: none;
         }
-        
+
+        .flame-wrapper {
+            position: relative;
+            width: 300px;
+            height: 400px;
+        }
+
         .flame {
-          position: absolute;
-          bottom: 0;
-          left: 50%;
-          transform: translateX(-50%);
-          width: 100px;
-          height: 150px;
-          background: linear-gradient(to top, #ff4500 0%, #ffa500 50%, #ffff00 100%);
-          border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%;
-          opacity: 0.8;
-          filter: blur(20px);
-          animation: flicker 0.3s ease-in-out infinite;
-        }
-        
-        .flame-1 {
-          animation-delay: 0s;
-          animation-duration: 0.4s;
-        }
-        
-        .flame-2 {
-          left: 40%;
-          width: 80px;
-          height: 120px;
-          animation-delay: 0.1s;
-          animation-duration: 0.5s;
-        }
-        
-        .flame-3 {
-          left: 60%;
-          width: 90px;
-          height: 140px;
-          animation-delay: 0.2s;
-          animation-duration: 0.45s;
-        }
-        
-        .flame-4 {
-          left: 45%;
-          width: 110px;
-          height: 160px;
-          animation-delay: 0.15s;
-          animation-duration: 0.35s;
-          filter: blur(25px);
-        }
-        
-        .flame-5 {
-          left: 55%;
-          width: 95px;
-          height: 135px;
-          animation-delay: 0.25s;
-          animation-duration: 0.4s;
-          filter: blur(22px);
-        }
-        
-        @keyframes flicker {
-          0%, 100% {
-            transform: translateX(-50%) scaleY(1) scaleX(1);
+            position: absolute;
+            bottom: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 100px;
+            height: 150px;
+            background: linear-gradient(to top, #ff4500 0%, #ffa500 50%, #ffff00 100%);
+            border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%;
             opacity: 0.8;
-          }
-          50% {
-            transform: translateX(-50%) scaleY(1.1) scaleX(0.95);
-            opacity: 1;
-          }
+            filter: blur(20px);
         }
-      `}</style>
 
-      <div className="relative z-10 min-h-screen flex items-center justify-center p-4">
-        {step === 'scan' && (
-          <div className="bg-white/10 backdrop-blur-lg rounded-3xl p-8 max-w-md w-full shadow-2xl">
-            <div className="text-center mb-6">
-              <div className="w-16 h-16 mx-auto mb-4 flex items-center justify-center">
-                <svg className="w-16 h-16 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
-                </svg>
-              </div>
-              <h1 className="text-3xl font-bold text-white mb-2">Escanear QR</h1>
-              <p className="text-blue-200 mb-2">Apunta la cámara al código QR</p>
-              <p className="text-sm text-gray-400">El QR debe contener coordenadas</p>
-              <p className="text-xs text-gray-500 mt-1">Formato: 40.7589,-73.9851</p>
-              {permissionStatus && (
-                <p className="text-sm text-yellow-300 mt-3 font-semibold">{permissionStatus}</p>
-              )}
+        .flame-1 {
+            animation: flicker 0.4s ease-in-out infinite;
+        }
+
+        .flame-2 {
+            left: 40%;
+            width: 80px;
+            height: 120px;
+            animation: flicker 0.5s ease-in-out infinite 0.1s;
+        }
+
+        .flame-3 {
+            left: 60%;
+            width: 90px;
+            height: 140px;
+            animation: flicker 0.45s ease-in-out infinite 0.2s;
+        }
+
+        .flame-4 {
+            left: 45%;
+            width: 110px;
+            height: 160px;
+            filter: blur(25px);
+            animation: flicker 0.35s ease-in-out infinite 0.15s;
+        }
+
+        .flame-5 {
+            left: 55%;
+            width: 95px;
+            height: 135px;
+            filter: blur(22px);
+            animation: flicker 0.4s ease-in-out infinite 0.25s;
+        }
+
+        @keyframes flicker {
+            0%, 100% {
+                transform: translateX(-50%) scaleY(1) scaleX(1);
+                opacity: 0.8;
+            }
+            50% {
+                transform: translateX(-50%) scaleY(1.1) scaleX(0.95);
+                opacity: 1;
+            }
+        }
+
+        .card {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(20px);
+            border-radius: 1.5rem;
+            padding: 2rem;
+            max-width: 28rem;
+            width: 100%;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+            position: relative;
+            z-index: 10;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 1.5rem;
+        }
+
+        .icon {
+            width: 4rem;
+            height: 4rem;
+            margin: 0 auto 1rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .icon svg {
+            width: 100%;
+            height: 100%;
+            color: #60a5fa;
+        }
+
+        h1 {
+            font-size: 1.875rem;
+            font-weight: bold;
+            color: white;
+            margin-bottom: 0.5rem;
+        }
+
+        .subtitle {
+            color: #bfdbfe;
+            margin-bottom: 0.5rem;
+        }
+
+        .info-text {
+            font-size: 0.875rem;
+            color: #9ca3af;
+        }
+
+        .status {
+            font-size: 0.875rem;
+            color: #fcd34d;
+            font-weight: 600;
+            margin-top: 0.75rem;
+        }
+
+        .video-container {
+            position: relative;
+            border-radius: 1rem;
+            overflow: hidden;
+            background: black;
+            aspect-ratio: 1;
+            margin-bottom: 1rem;
+        }
+
+        video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        canvas {
+            display: none;
+        }
+
+        .scan-frame {
+            position: absolute;
+            inset: 3rem;
+            border: 4px solid rgba(96, 165, 250, 0.5);
+            border-radius: 0.5rem;
+            pointer-events: none;
+        }
+
+        .error-message {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            color: white;
+            padding: 1rem;
+        }
+
+        button {
+            width: 100%;
+            background: #3b82f6;
+            color: white;
+            font-weight: 600;
+            padding: 0.75rem;
+            border-radius: 0.75rem;
+            border: none;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        button:hover {
+            background: #2563eb;
+        }
+
+        button.secondary {
+            background: #475569;
+        }
+
+        button.secondary:hover {
+            background: #334155;
+        }
+
+        button.ios-btn {
+            background: #eab308;
+            color: black;
+            margin-bottom: 1rem;
+        }
+
+        button.ios-btn:hover {
+            background: #ca8a04;
+        }
+
+        .compass-container {
+            position: relative;
+            width: 18rem;
+            height: 18rem;
+            margin: 0 auto 2rem;
+        }
+
+        .compass-bg {
+            position: absolute;
+            inset: 0;
+            border-radius: 50%;
+            background: linear-gradient(135deg, rgba(59, 130, 246, 0.2), rgba(168, 85, 247, 0.2));
+            border: 4px solid rgba(96, 165, 250, 0.3);
+        }
+
+        .compass-directions {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .direction {
+            position: absolute;
+            font-weight: bold;
+            color: white;
+        }
+
+        .direction.n {
+            top: 0.5rem;
+            font-size: 1.25rem;
+        }
+
+        .direction.s {
+            bottom: 0.5rem;
+            color: rgba(255, 255, 255, 0.5);
+        }
+
+        .direction.e {
+            right: 0.5rem;
+            color: rgba(255, 255, 255, 0.5);
+        }
+
+        .direction.w {
+            left: 0.5rem;
+            color: rgba(255, 255, 255, 0.5);
+        }
+
+        .compass-needle {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: transform 0.3s ease-out;
+        }
+
+        .needle {
+            position: relative;
+        }
+
+        .needle-north {
+            width: 0.5rem;
+            height: 8rem;
+            background: linear-gradient(to bottom, #ef4444, #dc2626);
+            border-radius: 9999px;
+            position: absolute;
+            top: -8rem;
+            left: 50%;
+            transform: translateX(-50%);
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+        }
+
+        .needle-south {
+            width: 0.5rem;
+            height: 8rem;
+            background: linear-gradient(to top, rgba(255, 255, 255, 0.8), rgba(255, 255, 255, 0.4));
+            border-radius: 9999px;
+            position: absolute;
+            top: 0;
+            left: 50%;
+            transform: translateX(-50%);
+        }
+
+        .needle-center {
+            width: 1.5rem;
+            height: 1.5rem;
+            background: white;
+            border-radius: 50%;
+            border: 4px solid #ef4444;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+        }
+
+        .compass-dot {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .dot {
+            width: 1rem;
+            height: 1rem;
+            background: #3b82f6;
+            border-radius: 50%;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+        }
+
+        .distance-display {
+            font-size: 3.75rem;
+            font-weight: bold;
+            color: #60a5fa;
+            margin-bottom: 0.5rem;
+        }
+
+        .arrived {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #fbbf24;
+            margin-top: 1rem;
+            animation: pulse 2s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% {
+                opacity: 1;
+            }
+            50% {
+                opacity: 0.5;
+            }
+        }
+
+        .info-card {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 0.75rem;
+            padding: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .info-label {
+            color: #bfdbfe;
+            font-size: 0.875rem;
+            margin-bottom: 0.25rem;
+        }
+
+        .info-value {
+            color: white;
+            font-size: 1.5rem;
+            font-weight: bold;
+        }
+
+        .note {
+            font-size: 0.75rem;
+            text-align: center;
+            color: #9ca3af;
+            margin-top: 0.75rem;
+        }
+
+        #scanScreen, #compassScreen {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <div class="frost-overlay" id="frostOverlay">
+            <div class="frost-corner top-left"></div>
+            <div class="frost-corner top-right"></div>
+            <div class="frost-corner bottom-left"></div>
+            <div class="frost-corner bottom-right"></div>
+        </div>
+
+        <div class="flame-container" id="flameContainer">
+            <div class="flame-wrapper">
+                <div class="flame flame-1"></div>
+                <div class="flame flame-2"></div>
+                <div class="flame flame-3"></div>
+                <div class="flame flame-4"></div>
+                <div class="flame flame-5"></div>
             </div>
+        </div>
 
-            <div className="relative rounded-2xl overflow-hidden bg-black aspect-square mb-4">
-              {!cameraError && (
-                <>
-                  <video
-                    ref={videoRef}
-                    autoPlay
-                    playsInline
-                    muted
-                    className="w-full h-full object-cover"
-                  />
-                  <canvas ref={canvasRef} className="hidden" />
-                  <div className="absolute inset-0 border-4 border-blue-400/50 m-12 rounded-lg pointer-events-none"></div>
-                </>
-              )}
-              {cameraError && (
-                <div className="w-full h-full flex items-center justify-center text-white text-center p-4">
-                  <div>
-                    <p className="text-lg mb-2">⚠️ No se pudo acceder a la cámara</p>
-                    <p className="text-sm text-gray-300">Permite el acceso en la configuración</p>
-                  </div>
+        <div id="scanScreen">
+            <div class="card">
+                <div class="header">
+                    <div class="icon">
+                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                        </svg>
+                    </div>
+                    <h1>Escanear QR</h1>
+                    <p class="subtitle">Apunta la cámara al código QR</p>
+                    <p class="info-text">El QR debe contener coordenadas</p>
+                    <p class="info-text" style="font-size: 0.75rem; margin-top: 0.25rem;">Formato: 40.7589,-73.9851</p>
+                    <p class="status" id="scanStatus"></p>
                 </div>
-              )}
-            </div>
 
-            <button
-              onClick={useExampleCoordinates}
-              className="w-full bg-blue-500 hover:bg-blue-600 text-white font-semibold py-3 rounded-xl transition-colors mb-3"
-            >
-              Usar coordenadas de ejemplo
-            </button>
-            
-            <p className="text-xs text-center text-gray-400">
-              Nota: En dispositivos móviles necesitas dar permisos de cámara
-            </p>
-          </div>
-        )}
-
-        {step === 'compass' && (
-          <div className="bg-white/10 backdrop-blur-lg rounded-3xl p-8 max-w-md w-full shadow-2xl">
-            <div className="text-center mb-8">
-              <div className="w-12 h-12 mx-auto mb-4 flex items-center justify-center">
-                <svg className="w-12 h-12 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                </svg>
-              </div>
-              <h1 className="text-3xl font-bold text-white mb-2">Navegación</h1>
-              <div className="text-6xl font-bold text-blue-400 mb-2">
-                {distance}m
-              </div>
-              <p className="text-blue-200">hasta el destino</p>
-              {target?.name && (
-                <p className="text-sm text-gray-300 mt-1">{target.name}</p>
-              )}
-              {theme?.name === 'fire' && (
-                <p className="text-2xl font-bold text-yellow-400 mt-4 animate-pulse">🔥 ¡LLEGASTE! 🔥</p>
-              )}
-              {permissionStatus && (
-                <p className="text-sm text-yellow-300 mt-2">{permissionStatus}</p>
-              )}
-            </div>
-
-            {showOrientationButton && (
-              <button
-                onClick={requestOrientationPermission}
-                className="w-full bg-yellow-500 hover:bg-yellow-600 text-black font-semibold py-3 rounded-xl transition-colors mb-4"
-              >
-                🧭 Activar Brújula (iOS)
-              </button>
-            )}
-
-            <div className="relative w-72 h-72 mx-auto mb-8">
-              <div className="absolute inset-0 rounded-full bg-gradient-to-br from-blue-500/20 to-purple-500/20 border-4 border-blue-400/30"></div>
-              
-              <div className="absolute inset-0 flex items-center justify-center">
-                <div className="absolute top-2 text-white font-bold text-xl">N</div>
-                <div className="absolute bottom-2 text-white/50 font-bold">S</div>
-                <div className="absolute right-2 text-white/50 font-bold">E</div>
-                <div className="absolute left-2 text-white/50 font-bold">O</div>
-              </div>
-
-              <div
-                className="absolute inset-0 transition-transform duration-300 ease-out flex items-center justify-center"
-                style={{ transform: `rotate(${compassRotation}deg)` }}
-              >
-                <div className="relative">
-                  <div className="w-2 h-32 bg-gradient-to-b from-red-500 to-red-600 rounded-full absolute -top-32 left-1/2 -translate-x-1/2 shadow-lg"></div>
-                  <div className="w-2 h-32 bg-gradient-to-t from-white/80 to-white/40 rounded-full absolute top-0 left-1/2 -translate-x-1/2"></div>
-                  <div className="w-6 h-6 bg-white rounded-full border-4 border-red-500 shadow-lg"></div>
+                <div class="video-container">
+                    <video id="video" autoplay playsinline muted></video>
+                    <canvas id="canvas"></canvas>
+                    <div class="scan-frame"></div>
+                    <div class="error-message" id="cameraError" style="display: none;">
+                        <div>
+                            <p style="font-size: 1.125rem; margin-bottom: 0.5rem;">⚠️ No se pudo acceder a la cámara</p>
+                            <p style="font-size: 0.875rem; color: #d1d5db;">Permite el acceso en la configuración</p>
+                        </div>
+                    </div>
                 </div>
-              </div>
 
-              <div className="absolute inset-0 flex items-center justify-center">
-                <div className="w-4 h-4 bg-blue-500 rounded-full shadow-lg"></div>
-              </div>
+                <button onclick="useExample()">Usar coordenadas de ejemplo</button>
+                <p class="note">Nota: En dispositivos móviles necesitas dar permisos de cámara</p>
             </div>
+        </div>
 
-            <div className="bg-white/5 rounded-xl p-4 mb-4">
-              <div className="text-center">
-                <div className="text-blue-200 text-sm mb-1">Dirección</div>
-                <div className="text-white text-2xl font-bold">{Math.round(bearing)}°</div>
-              </div>
+        <div id="compassScreen">
+            <div class="card">
+                <div class="header">
+                    <div class="icon" style="width: 3rem; height: 3rem;">
+                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                        </svg>
+                    </div>
+                    <h1>Navegación</h1>
+                    <div class="distance-display" id="distanceDisplay">0m</div>
+                    <p class="subtitle">hasta el destino</p>
+                    <p class="info-text" id="targetName"></p>
+                    <p class="arrived" id="arrivedMsg" style="display: none;">🔥 ¡LLEGASTE! 🔥</p>
+                    <p class="status" id="compassStatus"></p>
+                </div>
+
+                <button class="ios-btn" id="iosBtn" style="display: none;" onclick="requestOrientation()">
+                    🧭 Activar Brújula (iOS)
+                </button>
+
+                <div class="compass-container">
+                    <div class="compass-bg"></div>
+                    <div class="compass-directions">
+                        <div class="direction n">N</div>
+                        <div class="direction s">S</div>
+                        <div class="direction e">E</div>
+                        <div class="direction w">O</div>
+                    </div>
+                    <div class="compass-needle" id="compassNeedle">
+                        <div class="needle">
+                            <div class="needle-north"></div>
+                            <div class="needle-south"></div>
+                            <div class="needle-center"></div>
+                        </div>
+                    </div>
+                    <div class="compass-dot">
+                        <div class="dot"></div>
+                    </div>
+                </div>
+
+                <div class="info-card">
+                    <div style="text-align: center;">
+                        <div class="info-label">Dirección</div>
+                        <div class="info-value" id="bearingDisplay">0°</div>
+                    </div>
+                </div>
+
+                <button class="secondary" onclick="resetApp()">Escanear nuevo QR</button>
             </div>
-
-            <button
-              onClick={() => {
-                setStep('scan');
-                setTarget(null);
-                setUserLocation(null);
-                setPermissionStatus('');
-              }}
-              className="w-full bg-slate-600 hover:bg-slate-700 text-white font-semibold py-3 rounded-xl transition-colors"
-            >
-              Escanear nuevo QR
-            </button>
-          </div>
-        )}
-      </div>
+        </div>
     </div>
-  );
-};
 
-export default QRCompassApp;
+    <script>
+        let stream = null;
+        let scanInterval = null;
+        let target = null;
+        let userLocation = null;
+        let heading = 0;
+        let distance = 0;
+        let bearing = 0;
+
+        function showScreen(screen) {
+            document.getElementById('scanScreen').style.display = screen === 'scan' ? 'block' : 'none';
+            document.getElementById('compassScreen').style.display = screen === 'compass' ? 'block' : 'none';
+        }
+
+        function calculateDistance(lat1, lon1, lat2, lon2) {
+            const R = 6371000;
+            const phi1 = lat1 * Math.PI / 180;
+            const phi2 = lat2 * Math.PI / 180;
+            const deltaPhi = (lat2 - lat1) * Math.PI / 180;
+            const deltaLambda = (lon2 - lon1) * Math.PI / 180;
+
+            const a = Math.sin(deltaPhi/2) * Math.sin(deltaPhi/2) +
+                      Math.cos(phi1) * Math.cos(phi2) *
+                      Math.sin(deltaLambda/2) * Math.sin(deltaLambda/2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+
+            return R * c;
+        }
+
+        function calculateBearing(lat1, lon1, lat2, lon2) {
+            const phi1 = lat1 * Math.PI / 180;
+            const phi2 = lat2 * Math.PI / 180;
+            const deltaLambda = (lon2 - lon1) * Math.PI / 180;
+
+            const y = Math.sin(deltaLambda) * Math.cos(phi2);
+            const x = Math.cos(phi1) * Math.sin(phi2) -
+                      Math.sin(phi1) * Math.cos(phi2) * Math.cos(deltaLambda);
+            
+            const theta = Math.atan2(y, x);
+            return (theta * 180 / Math.PI + 360) % 360;
+        }
+
+        function updateTheme(dist) {
+            const app = document.getElementById('app');
+            const frostOverlay = document.getElementById('frostOverlay');
+            const flameContainer = document.getElementById('flameContainer');
+            const arrivedMsg = document.getElementById('arrivedMsg');
+
+            const maxDist = 1000;
+            const minDist = 10;
+
+            if (dist <= minDist) {
+                app.style.background = '#000000';
+                frostOverlay.style.opacity = '0';
+                flameContainer.style.display = 'flex';
+                arrivedMsg.style.display = 'block';
+                return;
+            }
+
+            flameContainer.style.display = 'none';
+            arrivedMsg.style.display = 'none';
+
+            const progress = Math.max(0, Math.min(1, 1 - (dist / maxDist)));
+
+            if (progress < 0.33) {
+                const intensity = progress / 0.33;
+                app.style.background = `rgba(15, 23, 42, ${0.95 - intensity * 0.5})`;
+                frostOverlay.style.opacity = `${0.3 * (1 - intensity)}`;
+            } else if (progress < 0.66) {
+                const intensity = (progress - 0.33) / 0.33;
+                app.style.background = `linear-gradient(135deg, 
+                    rgba(30, 58, 138, ${1 - intensity}), 
+                    rgba(120, 53, 15, ${intensity}))`;
+                frostOverlay.style.opacity = '0';
+            } else {
+                const intensity = (progress - 0.66) / 0.34;
+                app.style.background = `linear-gradient(135deg, 
+                    rgba(153, 27, 27, ${intensity}), 
+                    rgba(217, 119, 6, ${intensity}))`;
+                frostOverlay.style.opacity = '0';
+            }
+        }
+
+        async function startCamera() {
+            try {
+                document.getElementById('scanStatus').textContent = 'Solicitando permiso de cámara...';
+                document.getElementById('cameraError').style.display = 'none';
+                
+                stream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: 'environment' }
+                });
+                
+                const video = document.getElementById('video');
+                video.srcObject = stream;
+                document.getElementById('scanStatus').textContent = 'Cámara activada - Escanea un QR';
+                
+                scanInterval = setInterval(scanQR, 300);
+            } catch (err) {
+                console.error('Error al acceder a la cámara:', err);
+                document.getElementById('scanStatus').textContent = 'Error: No se pudo acceder a la cámara';
+                document.getElementById('cameraError').style.display = 'flex';
+            }
+        }
+
+        function stopCamera() {
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+                stream = null;
+            }
+            if (scanInterval) {
+                clearInterval(scanInterval);
+                scanInterval = null;
+            }
+        }
+
+        function scanQR() {
+            const video = document.getElementById('video');
+            const canvas = document.getElementById('canvas');
+            
+            if (video.readyState !== video.HAVE_ENOUGH_DATA) return;
+
+            const ctx = canvas.getContext('2d');
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            const code = jsQR(imageData.data, imageData.width, imageData.height);
+
+            if (code) {
+                try {
+                    const data = JSON.parse(code.data);
+                    if (data.lat && data.lon) {
+                        target = data;
+                        stopCamera();
+                        showScreen('compass');
+                        startCompass();
+                        return;
+                    }
+                } catch (e) {
+                    const coords = code.data.split(',');
+                    if (coords.length === 2) {
+                        const lat = parseFloat(coords[0].trim());
+                        const lon = parseFloat(coords[1].trim());
+                        if (!isNaN(lat) && !isNaN(lon)) {
+                            target = { lat: lat, lon: lon };
+                            stopCamera();
+                            showScreen('compass');
+                            startCompass();
+                        }
+                    }
+                }
+            }
+        }
+
+        function useExample() {
+            target = { lat: 40.7589, lon: -73.9851, name: 'Times Square, NY' };
+            stopCamera();
+            showScreen('compass');
+            startCompass();
+        }
+
+        function startCompass() {
+            document.getElementById('compassStatus').textContent = 'Obteniendo ubicación...';
+            
+            if (target.name) {
+                document.getElementById('targetName').textContent = target.name;
+            }
+
+            if (typeof DeviceOrientationEvent !== 'undefined' && 
+                typeof DeviceOrientationEvent.requestPermission === 'function') {
+                document.getElementById('iosBtn').style.display = 'block';
+            }
+
+            navigator.geolocation.watchPosition(
+                (position) => {
+                    userLocation = {
+                        lat: position.coords.latitude,
+                        lon: position.coords.longitude
+                    };
+                    document.getElementById('compassStatus').textContent = 'Ubicación obtenida';
+                    updateNavigation();
+                },
+                (error) => {
+                    console.error('Error obteniendo ubicación:', error);
+                    document.getElementById('compassStatus').textContent = 'Error: Activa la ubicación en tu dispositivo';
+                },
+                { enableHighAccuracy: true, maximumAge: 0, timeout: 5000 }
+            );
+
+            window.addEventListener('deviceorientationabsolute', handleOrientation, true);
+            window.addEventListener('deviceorientation', handleOrientation, true);
+        }
+
+        function handleOrientation(event) {
+            if (event.alpha !== null) {
+                heading = 360 - event.alpha;
+                updateNavigation();
+            }
+        }
+
+        function updateNavigation() {
+            if (!userLocation || !target) return;
+
+            distance = Math.round(calculateDistance(
+                userLocation.lat,
+                userLocation.lon,
+                target.lat,
+                target.lon
+            ));
+
+            bearing = calculateBearing(
+                userLocation.lat,
+                userLocation.lon,
+                target.lat,
+                target.lon
+            );
+
+            document.getElementById('distanceDisplay').textContent = distance + 'm';
+            document.getElementById('bearingDisplay').textContent = Math.round(bearing) + '°';
+
+            const compassRotation = bearing - heading;
+            document.getElementById('compassNeedle').style.transform = `rotate(${compassRotation}deg)`;
+
+            updateTheme(distance);
+        }
+
+        async function requestOrientation() {
+            if (typeof DeviceOrientationEvent !== 'undefined' && 
+                typeof DeviceOrientationEvent.requestPermission === 'function') {
+                try {
+                    const permission = await DeviceOrientationEvent.requestPermission();
+                    if (permission === 'granted') {
+                        document.getElementById('compassStatus').textContent = 'Sensores activados';
+                    }
+                } catch (err) {
+                    console.error('Error al solicitar permiso de orientación:', err);
+                }
+            }
+        }
+
+        function resetApp() {
+            target = null;
+            userLocation = null;
+            heading = 0;
+            distance = 0;
+            bearing = 0;
+            document.getElementById('app').style.background = '#000000';
+            document.getElementById('frostOverlay').style.opacity = '0';
+            document.getElementById('flameContainer').style.display = 'none';
+            window.removeEventListener('deviceorientationabsolute', handleOrientation, true);
+            window.removeEventListener('deviceorientation', handleOrientation, true);
+            showScreen('scan');
+            startCamera();
+        }
+
+        showScreen('scan');
+        startCamera();
+    </script>
+</body>
+</html>
