@@ -373,11 +373,12 @@
     <div class="vignette"></div>
 
     <div id="app">
-        <!-- SCAN SCREEN -->
-        <div id="scanScreen" class="active-screen">
-            <video id="video" class="camera-feed" autoplay playsinline muted></video>
-            <canvas id="canvas"></canvas>
+        <!-- PERMANENT AR LAYER -->
+        <video id="video" class="camera-feed" autoplay playsinline muted></video>
+        <canvas id="canvas"></canvas>
 
+        <!-- SCAN SCREEN HUD -->
+        <div id="scanScreen" class="active-screen" style="position: absolute; inset: 0; z-index: 10;">
             <div class="hud-container">
                 <div class="hud-top-bar">
                     <div class="hud-status">SYSTEM: SCAN_MODE</div>
@@ -404,11 +405,8 @@
         </div>
 
         <!-- COMPASS/HUD SCREEN -->
-        <div id="compassScreen">
-            <!-- Background for compass mode (if no camera) -->
-            <div
-                style="position:absolute; inset:0; background: radial-gradient(circle at center, #0a192f 0%, #000 100%); z-index: 1;">
-            </div>
+        <div id="compassScreen" style="position: absolute; inset: 0; z-index: 20;">
+            <!-- Opaque background REMOVED for AR -->
 
             <div class="hud-container" style="z-index: 50;">
                 <div class="hud-top-bar">
@@ -421,20 +419,6 @@
                         TGT_LAT: 00.0000<br>
                         TGT_LON: 00.0000
                     </div>
-                </div>
-
-                <div class="hud-center">
-                    <!-- The ring rotates to show North relative to user -->
-                    <div class="compass-ring" id="compassRing">
-                        <div class="compass-mark mark-n">N</div>
-                        <div class="compass-mark mark-s">S</div>
-                        <div class="compass-mark mark-e">E</div>
-                        <div class="compass-mark mark-w">W</div>
-
-                        <!-- The arrow points to target relative to North within the ring system -->
-                        <div class="target-arrow" id="targetArrow"></div>
-                    </div>
-                    <div class="reticle"></div>
                 </div>
 
                 <div class="hud-bottom-bar">
@@ -457,6 +441,21 @@
                     <button id="iosBtn" class="btn-cyber" style="display:none; margin-top:5px;"
                         onclick="requestOrientation()">ENABLE SENSORS</button>
                 </div>
+            </div>
+
+            <!-- MOVED OUT OF hud-container FOR PERFECT CENTERING -->
+            <div class="hud-center">
+                <!-- The ring rotates to show North relative to user -->
+                <div class="compass-ring" id="compassRing">
+                    <div class="compass-mark mark-n">N</div>
+                    <div class="compass-mark mark-s">S</div>
+                    <div class="compass-mark mark-e">E</div>
+                    <div class="compass-mark mark-w">W</div>
+
+                    <!-- The arrow points to target relative to North within the ring system -->
+                    <div class="target-arrow" id="targetArrow"></div>
+                </div>
+                <div class="reticle"></div>
             </div>
         </div>
     </div>
@@ -647,7 +646,7 @@
 
         function lockTarget(data) {
             target = data;
-            stopCamera();
+            // stopCamera(); // DON'T STOP CAMERA FOR AR!
             showScreen('compass');
             startCompass();
             document.getElementById('targetArrow').style.display = 'block';
@@ -749,8 +748,8 @@
         function resetApp() {
             target = null;
             userLocation = null;
-            document.getElementById('scanScreen').style.display = 'block';
-            document.getElementById('compassScreen').style.display = 'none';
+            document.getElementById('scanScreen').classList.add('active-screen');
+            document.getElementById('compassScreen').classList.remove('active-screen');
             document.getElementById('targetArrow').style.display = 'none';
             showScreen('scan');
             startCamera();
