@@ -23,6 +23,16 @@
             --grid-color: rgba(0, 243, 255, 0.1);
         }
 
+        /* Day Mode Overrides */
+        @media (prefers-color-scheme: light) {
+            :root {
+                --neon-cyan: #00a8cc;
+                --neon-blue: #0055dd;
+                --neon-orange: #ff6600;
+                --neon-red: #dd0000;
+            }
+        }
+
         * {
             margin: 0;
             padding: 0;
@@ -693,7 +703,10 @@
                     <br>
                     <br>
                     <br>
+                    <br>
                     <button class="btn-cyber" onclick="showScreen('create'); initMap()">CREATE TARGET</button>
+                    <button class="btn-cyber" onclick="shareMyLocation()">SHARE MY LOCATION</button>
+                    <button class="btn-cyber" onclick="showHistory()">HISTORY</button>
                     <!-- Simulated Signal Button Removed -->
                     <p id="scanStatus" style="margin-top: 10px; font-size: 0.8rem;"></p>
                 </div>
@@ -734,6 +747,8 @@
                         </div>
                     </div>
                     <button class="btn-cyber btn-secondary" onclick="resetApp()">CANCEL NAV</button>
+                    <button id="soundToggle" class="btn-cyber" onclick="toggleSound()"
+                        style="display:inline-block; margin-left:10px;">🔊</button>
                     <button id="iosBtn" class="btn-cyber" style="display:none; margin-top:5px;"
                         onclick="requestOrientation()">ENABLE SENSORS</button>
                 </div>
@@ -798,10 +813,14 @@
         let scanInterval = null;
         let target = null;
         let userLocation = null;
-        let heading = 0; // Phone's orientation relative to North (0-360)
-        let bearing = 0; // Angle from user to target relative to North
+        let heading = 0;
+        let bearing = 0;
         let scanCoordsEl = document.getElementById('scanCoords');
         let navCoordsEl = document.getElementById('navCoords');
+        let lastVibrationTime = 0;
+        let lastBeepTime = 0;
+        let audioContext = null;
+        let soundEnabled = true;
 
         // Global GPS Watcher for Scan Mode
         if (navigator.geolocation) {
@@ -944,8 +963,21 @@
                     // Try parsing JSON first
                     const data = JSON.parse(code.data);
                     if (data.lat && data.lon) {
-                        lockTarget(data);
-                        return;
+                        target = data;
+                        document.getElementById('targetName').textContent = data.name || 'TARGET ACQUIRED';
+                        document.getElementById('targetArrow').style.display = 'block';
+
+                        // Save to history
+                        saveToHistory(target);
+
+                        // Vibrate on successful scan
+                        if (navigator.vibrate) {
+                            navigator.vibrate(200);
+                        }
+
+                        showScreen('compass');
+                        // Keep camera running for AR mode
+                        return; // Exit after successful target lock
                     } else {
                         throw new Error('Missing coordinates');
                     }
@@ -1055,37 +1087,67 @@
             document.getElementById('headingDisplay').textContent = Math.round(heading).toString().padStart(3, '0') + '°';
 
             // 3. Update Visuals
-            // Rotate the compass ring so user's heading is always UP
-            // The ring is already centered by flexbox in .hud-center, so NO TRANSLATE needed.
             const ringRotation = -heading;
             const ringEl = document.getElementById('compassRing');
             ringEl.style.transform = `rotate(${ringRotation}deg)`;
-            // Set css var for pulse animation to use current rotation
             ringEl.style.setProperty('--rotation', `${ringRotation}deg`);
 
-            // Rotate target arrow.
-            // The arrow is inside the ring. If ring rotates -heading, 
-            // the arrow needs to be at 'bearing' relative to North.
-            // Since the ring container itself is rotated by -heading, 
-            // any child rotated by X degrees will be at (X - heading) degrees effectively.
-            // We want the arrow to point to 'bearing' absolute.
-            // So if we just rotate the arrow by 'bearing', it will be at 'bearing' relative to the ring's 0 (North).
-            // Example: Bearing 90 (East). Heading 0 (North). Ring Rot: 0. Arrow Rot: 90. Result: Arrow Right. Correct.
-            // Example: Bearing 90 (East). Heading 90 (East). Ring Rot: -90. Arrow Rot: 90.
-            // Visually: The "N" marks connects to ring and moves to -90 (Left).
-            // Arrow is at +90 relative to the N mark. -90 + 90 = 0 (Up). 
-            // Result: Arrow points UP. The user is facing East, checking target East -> Target is straight ahead. Correct.
-
-            // However, our arrow CSS is top-centered? No, I set it to transform-origin bottom center, and positioned it.
-            // Let's refine the Arrow CSS logic in the <style> to be simpler.
-            // Actually, simpler logic:
-            // Rotate the ARROW element by (bearing) degrees. It is a child of the ring? 
-            // YES. If it is a child of the ring, and the ring rotates by -heading, then the arrow rotates by (bearing).
-            // Total visual rotation = bearing - heading.
             document.getElementById('targetArrow').style.transform = `translateX(-50%) rotate(${bearing}deg)`;
 
             // 4. Update Environmental Effects
             updateEnvironment(dist);
+
+            // 5. HAPTIC FEEDBACK
+            const now = Date.now();
+            if (now - lastVibrationTime > 2000) {
+                if (navigator.vibrate) {
+                    if (dist < 10) {
+                        navigator.vibrate([100, 50, 100, 50, 100]);
+                    } else if (dist < 50) {
+                        navigator.vibrate(100);
+                    }
+                    lastVibrationTime = now;
+                }
+            }
+
+            // 6. PROXIMITY SOUND
+            if (soundEnabled && dist < 100) {
+                playProximityBeep(dist);
+            }
+        }
+
+        // --- PROXIMITY SOUND ---
+        function playProximityBeep(distance) {
+            const now = Date.now();
+            const interval = Math.max(200, distance * 10); // Faster beeps when closer
+
+            if (now - lastBeepTime < interval) return;
+
+            if (!audioContext) {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            }
+
+            const oscillator = audioContext.createOscillator();
+            const gainNode = audioContext.createGain();
+
+            oscillator.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+
+            oscillator.frequency.value = 800;
+            gainNode.gain.value = 0.2;
+
+            oscillator.start();
+            oscillator.stop(audioContext.currentTime + 0.1);
+
+            lastBeepTime = now;
+        }
+
+        function toggleSound() {
+            soundEnabled = !soundEnabled;
+            const btn = document.getElementById('soundToggle');
+            if (btn) {
+                btn.textContent = soundEnabled ? '🔊' : '🔇';
+            }
         }
 
         function updateEnvironment(dist) {
@@ -1125,6 +1187,75 @@
         // --- QR Creator Logic ---
         let map = null;
         let selectedLocation = null;
+
+        // --- HISTORY MANAGEMENT ---
+        function saveToHistory(target) {
+            let history = JSON.parse(localStorage.getItem('qr_compass_history') || '[]');
+            history.unshift({ ...target, timestamp: Date.now() });
+            history = history.slice(0, 10); // Keep last 10
+            localStorage.setItem('qr_compass_history', JSON.stringify(history));
+        }
+
+        function loadHistory() {
+            return JSON.parse(localStorage.getItem('qr_compass_history') || '[]');
+        }
+
+        function showHistory() {
+            const history = loadHistory();
+            if (history.length === 0) {
+                alert('NO HISTORY AVAILABLE');
+                return;
+            }
+
+            let msg = 'TARGET HISTORY:\n\n';
+            history.forEach((t, i) => {
+                const date = new Date(t.timestamp).toLocaleString();
+                msg += `${i + 1}. ${t.name}\n   ${t.lat.toFixed(5)}, ${t.lon.toFixed(5)}\n   ${date}\n\n`;
+            });
+
+            const choice = prompt(msg + 'Enter number to load (or Cancel):');
+            if (choice && !isNaN(choice)) {
+                const idx = parseInt(choice) - 1;
+                if (idx >= 0 && idx < history.length) {
+                    target = history[idx];
+                    document.getElementById('targetArrow').style.display = 'block';
+                    showScreen('compass');
+                }
+            }
+        }
+
+        // --- SHARE MY LOCATION ---
+        function shareMyLocation() {
+            if (!userLocation) {
+                alert('GPS NOT AVAILABLE');
+                return;
+            }
+
+            const payload = JSON.stringify({
+                lat: userLocation.lat,
+                lon: userLocation.lon,
+                name: `MY-LOC-${Date.now()}`
+            });
+
+            const qrContainer = document.getElementById('qrcode');
+            qrContainer.innerHTML = '';
+
+            const qr = qrcode(0, 'H');
+            qr.addData(payload);
+            qr.make();
+
+            const imgTag = qr.createImgTag(5, 10);
+            qrContainer.innerHTML = imgTag;
+
+            const img = qrContainer.querySelector('img');
+            if (img) {
+                img.style.maxWidth = '300px';
+                img.style.maxHeight = '300px';
+                img.style.border = '5px solid #fff';
+            }
+
+            document.getElementById('qrResultModal').style.display = 'flex';
+        }
 
         function initMap() {
             if (map) return; // Already inited
