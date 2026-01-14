@@ -572,7 +572,19 @@
             canvas.height = video.videoHeight;
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
             const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-            const code = jsQR(imageData.data, imageData.width, imageData.height);
+
+            // Critical check: Is jsQR loaded?
+            if (typeof jsQR === 'undefined') {
+                const statusEl = document.getElementById('scanStatus');
+                statusEl.textContent = 'ERR: LIB jsQR NOT LOADED';
+                statusEl.style.color = 'var(--neon-red)';
+                console.error('jsQR library not found');
+                return;
+            }
+
+            const code = jsQR(imageData.data, imageData.width, imageData.height, {
+                inversionAttempts: "dontInvert",
+            });
 
             if (code) {
                 // Visual feedback that something was seen
