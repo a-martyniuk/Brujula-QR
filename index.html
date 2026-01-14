@@ -535,15 +535,25 @@
                 const statusEl = document.getElementById('scanStatus');
                 statusEl.textContent = 'INITIALIZING OPTICS...';
 
-                stream = await navigator.mediaDevices.getUserMedia({
-                    video: { facingMode: 'environment' }
-                });
+                // Camera constraints for better resolution (720p preferred)
+                const constraints = {
+                    video: {
+                        facingMode: 'environment',
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 }
+                    }
+                };
+
+                stream = await navigator.mediaDevices.getUserMedia(constraints);
 
                 const video = document.getElementById('video');
                 video.srcObject = stream;
-                statusEl.textContent = 'OPTICS ONLINE // SEARCHING...';
 
-                scanInterval = setInterval(scanQR, 300);
+                // Allow video to settle
+                video.onloadedmetadata = () => {
+                    statusEl.textContent = 'OPTICS ONLINE // SEARCHING...';
+                    scanInterval = setInterval(scanQR, 300); // 300ms is OK
+                };
             } catch (err) {
                 console.error(err);
                 document.getElementById('scanStatus').textContent = 'ERR: CAMERA ACCESS DENIED';
