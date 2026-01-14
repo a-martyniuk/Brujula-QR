@@ -60,6 +60,79 @@
             z-index: 999;
         }
 
+        /* --- Environmental Effects Overlay --- */
+        .env-overlay {
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            z-index: 5;
+            /* Above video(0), below HUD(50) */
+            transition: all 1s ease;
+            mix-blend-mode: hard-light;
+        }
+
+        /* State: Frozen (> 100m) */
+        .state-ice {
+            box-shadow: inset 0 0 150px var(--neon-cyan);
+            background: radial-gradient(circle, transparent 60%, rgba(0, 243, 255, 0.2) 90%, rgba(255, 255, 255, 0.4) 100%);
+            animation: ice-pulse 3s infinite alternate;
+        }
+
+        @keyframes ice-pulse {
+            0% {
+                opacity: 0.7;
+            }
+
+            100% {
+                opacity: 1;
+            }
+        }
+
+        /* State: Melting (10 - 100m) */
+        .state-melt {
+            box-shadow: inset 0 0 80px var(--neon-blue);
+            background: radial-gradient(circle, transparent 70%, rgba(0, 102, 255, 0.2) 100%);
+            opacity: 0.6;
+            animation: melt-drip 2s infinite linear;
+        }
+
+        @keyframes melt-drip {
+            0% {
+                transform: translateY(0);
+                opacity: 0.6;
+            }
+
+            50% {
+                opacity: 0.4;
+            }
+
+            100% {
+                transform: translateY(10px);
+                opacity: 0.6;
+            }
+
+            /* Subtle slide effect */
+        }
+
+        /* State: Overheat (< 10m) */
+        .state-heat {
+            box-shadow: inset 0 0 100px var(--neon-red), inset 0 0 30px var(--neon-orange);
+            background: radial-gradient(circle, transparent 50%, rgba(255, 51, 51, 0.3) 100%);
+            animation: heat-pulse 0.5s infinite alternate;
+        }
+
+        @keyframes heat-pulse {
+            0% {
+                opacity: 0.8;
+                box-shadow: inset 0 0 100px var(--neon-red);
+            }
+
+            100% {
+                opacity: 1;
+                box-shadow: inset 0 0 180px var(--neon-red), inset 0 0 50px var(--neon-orange);
+            }
+        }
+
         #app {
             position: relative;
             height: 100%;
@@ -378,6 +451,9 @@
         <!-- PERMANENT AR LAYER -->
         <video id="video" class="camera-feed" autoplay playsinline muted></video>
         <canvas id="canvas"></canvas>
+
+        <!-- Environmental Effects Layer -->
+        <div id="envOverlay" class="env-overlay"></div>
 
         <!-- SCAN SCREEN HUD -->
         <div id="scanScreen" class="active-screen" style="position: absolute; inset: 0; z-index: 10;">
@@ -744,6 +820,25 @@
             // YES. If it is a child of the ring, and the ring rotates by -heading, then the arrow rotates by (bearing).
             // Total visual rotation = bearing - heading.
             document.getElementById('targetArrow').style.transform = `translateX(-50%) rotate(${bearing}deg)`;
+
+            // 4. Update Environmental Effects
+            updateEnvironment(dist);
+        }
+
+        function updateEnvironment(dist) {
+            const envEl = document.getElementById('envOverlay');
+            envEl.className = 'env-overlay'; // Reset
+
+            if (dist > 100) {
+                // Freezer
+                envEl.classList.add('state-ice');
+            } else if (dist > 10) {
+                // Melting
+                envEl.classList.add('state-melt');
+            } else {
+                // Overheat / Fire
+                envEl.classList.add('state-heat');
+            }
         }
 
         function resetApp() {
