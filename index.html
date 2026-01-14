@@ -68,69 +68,69 @@
             z-index: 5;
             /* Above video(0), below HUD(50) */
             transition: all 1s ease;
-            mix-blend-mode: hard-light;
+            /* mix-blend-mode: hard-light; REMOVED for better visibility */
         }
 
         /* State: Frozen (> 100m) */
         .state-ice {
-            box-shadow: inset 0 0 150px var(--neon-cyan);
-            background: radial-gradient(circle, transparent 60%, rgba(0, 243, 255, 0.2) 90%, rgba(255, 255, 255, 0.4) 100%);
+            box-shadow: inset 0 0 100px #fff, inset 0 0 200px var(--neon-cyan);
+            /* Stronger white/cyan */
+            background: radial-gradient(circle, transparent 40%, rgba(0, 243, 255, 0.3) 80%, rgba(255, 255, 255, 0.6) 100%);
             animation: ice-pulse 3s infinite alternate;
         }
 
         @keyframes ice-pulse {
             0% {
-                opacity: 0.7;
+                opacity: 0.6;
             }
 
+            /* Increased opacity */
             100% {
-                opacity: 1;
+                opacity: 0.9;
             }
         }
 
         /* State: Melting (10 - 100m) */
         .state-melt {
             box-shadow: inset 0 0 80px var(--neon-blue);
-            background: radial-gradient(circle, transparent 70%, rgba(0, 102, 255, 0.2) 100%);
-            opacity: 0.6;
+            background: linear-gradient(to bottom, rgba(0, 243, 255, 0.2) 0%, transparent 80%);
+            /* Dripping look */
+            opacity: 0.7;
             animation: melt-drip 2s infinite linear;
         }
 
         @keyframes melt-drip {
             0% {
-                transform: translateY(0);
-                opacity: 0.6;
-            }
-
-            50% {
-                opacity: 0.4;
+                background-position: 0 -100px;
+                opacity: 0.7;
             }
 
             100% {
-                transform: translateY(10px);
-                opacity: 0.6;
+                background-position: 0 0;
+                opacity: 0.5;
             }
-
-            /* Subtle slide effect */
         }
 
         /* State: Overheat (< 10m) */
         .state-heat {
-            box-shadow: inset 0 0 100px var(--neon-red), inset 0 0 30px var(--neon-orange);
-            background: radial-gradient(circle, transparent 50%, rgba(255, 51, 51, 0.3) 100%);
-            animation: heat-pulse 0.5s infinite alternate;
+            box-shadow: inset 0 0 100px var(--neon-red), inset 0 0 50px var(--neon-orange);
+            background: radial-gradient(circle, transparent 40%, rgba(255, 0, 0, 0.4) 90%, rgba(255, 165, 0, 0.6) 100%);
+            animation: heat-pulse 0.4s infinite alternate;
+            /* Faster pulse */
         }
 
         @keyframes heat-pulse {
             0% {
-                opacity: 0.8;
-                box-shadow: inset 0 0 100px var(--neon-red);
+                opacity: 0.7;
+                transform: scale(1);
             }
 
             100% {
                 opacity: 1;
-                box-shadow: inset 0 0 180px var(--neon-red), inset 0 0 50px var(--neon-orange);
+                transform: scale(1.02);
             }
+
+            /* Slight breathing */
         }
 
         #app {
@@ -492,6 +492,8 @@
                         <div class="hud-status">NAV_SYSTEM: ONLINE</div>
                         <div style="font-size: 1.2rem; font-weight: bold; color: var(--neon-orange);" id="targetName">
                             TARGET ACQUIRED</div>
+                        <div style="font-size: 0.8rem; color: #fff; margin-top: 5px;" id="envStatus">ENV: DETECTING...
+                        </div>
                     </div>
                     <div class="hud-coords" id="navCoords">
                         TGT_LAT: 00.0000<br>
@@ -827,17 +829,21 @@
 
         function updateEnvironment(dist) {
             const envEl = document.getElementById('envOverlay');
+            const statusEl = document.getElementById('envStatus'); // DEBUG TEXT
             envEl.className = 'env-overlay'; // Reset
 
             if (dist > 100) {
                 // Freezer
                 envEl.classList.add('state-ice');
+                if (statusEl) statusEl.innerHTML = `TEMP: <span style="color:cyan">FREEZING</span> (${dist}m)`;
             } else if (dist > 10) {
                 // Melting
                 envEl.classList.add('state-melt');
+                if (statusEl) statusEl.innerHTML = `TEMP: <span style="color:#0088ff">THAWING</span> (${dist}m)`;
             } else {
                 // Overheat / Fire
                 envEl.classList.add('state-heat');
+                if (statusEl) statusEl.innerHTML = `TEMP: <span style="color:red">CRITICAL</span> (${dist}m)`;
             }
         }
 
