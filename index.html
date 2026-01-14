@@ -11,7 +11,8 @@
         integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
         integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <!-- QR Code Generator (More compatible than qrcodejs) -->
+    <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
     <style>
         :root {
             --neon-cyan: #00f3ff;
@@ -1181,14 +1182,22 @@
             const qrContainer = document.getElementById('qrcode');
             qrContainer.innerHTML = ''; // Clear prev
 
-            new QRCode(qrContainer, {
-                text: payload,
-                width: 300,  // Reduced to fit mobile screens
-                height: 300, // Reduced to fit mobile screens
-                colorDark: "#000000",  // BLACK (Standard)
-                colorLight: "#ffffff", // WHITE (Standard)
-                correctLevel: QRCode.CorrectLevel.H
-            });
+            // Use qrcode-generator library (more compatible)
+            const qr = qrcode(0, 'H'); // Type 0 (auto), Error correction H
+            qr.addData(payload);
+            qr.make();
+
+            // Create image element
+            const imgTag = qr.createImgTag(5, 10); // cellSize=5, margin=10
+            qrContainer.innerHTML = imgTag;
+
+            // Style the image
+            const img = qrContainer.querySelector('img');
+            if (img) {
+                img.style.maxWidth = '300px';
+                img.style.maxHeight = '300px';
+                img.style.border = '5px solid #fff';
+            }
 
             document.getElementById('qrResultModal').style.display = 'flex';
         }
