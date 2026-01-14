@@ -573,6 +573,63 @@
             display: block !important;
         }
 
+        /* --- Visual Proximity Feedback --- */
+        @keyframes screenFlash {
+
+            0%,
+            100% {
+                opacity: 0;
+            }
+
+            50% {
+                opacity: 0.3;
+            }
+        }
+
+        .proximity-flash {
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            z-index: 9999;
+            background: var(--neon-cyan);
+            animation: screenFlash 0.5s ease-out;
+        }
+
+        .proximity-warning {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 3rem;
+            font-weight: bold;
+            color: var(--neon-orange);
+            text-shadow: 0 0 20px var(--neon-orange);
+            pointer-events: none;
+            z-index: 9998;
+            animation: pulse 0.5s infinite;
+        }
+
+        .proximity-bar {
+            position: fixed;
+            bottom: 100px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 80%;
+            height: 8px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid var(--neon-cyan);
+            border-radius: 4px;
+            overflow: hidden;
+            z-index: 100;
+        }
+
+        .proximity-bar-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--neon-red), var(--neon-orange), var(--neon-cyan));
+            transition: width 0.3s ease;
+            box-shadow: 0 0 10px currentColor;
+        }
+
         /* --- Scanner Specifics --- */
         .camera-feed {
             position: absolute;
@@ -752,6 +809,13 @@
                     <button id="iosBtn" class="btn-cyber" style="display:none; margin-top:5px;"
                         onclick="requestOrientation()">ENABLE SENSORS</button>
                 </div>
+
+                <!-- Proximity Visual Indicators -->
+                <div class="proximity-bar" id="proximityBar" style="display:none;">
+                    <div class="proximity-bar-fill" id="proximityBarFill"></div>
+                </div>
+                <div id="proximityWarning" class="proximity-warning" style="display:none;"></div>
+                <div id="proximityFlash" class="proximity-flash" style="display:none;"></div>
             </div>
 
             <!-- MOVED OUT OF hud-container FOR PERFECT CENTERING -->
@@ -1097,33 +1161,98 @@
             // 4. Update Environmental Effects
             updateEnvironment(dist);
 
-            // 5. HAPTIC FEEDBACK (Visual fallback for iOS)
+            // 5. VISUAL PROXIMITY FEEDBACK (Works on ALL devices including iOS)
             const now = Date.now();
+            updateVisualProximity(dist, now);
+
+            // 6. Legacy haptic (won't work on iOS but harmless)
             if (now - lastVibrationTime > 2000) {
                 if (navigator.vibrate) {
-                    // Try vibration (won't work on iOS)
                     if (dist < 10) {
                         navigator.vibrate([200, 100, 200, 100, 200]);
                     } else if (dist < 50) {
                         navigator.vibrate(200);
                     }
                 }
-
-                // Visual feedback as fallback (works everywhere)
-                if (dist < 50) {
-                    const compassRing = document.getElementById('compassRing');
-                    compassRing.style.animation = 'none';
-                    setTimeout(() => {
-                        compassRing.style.animation = '';
-                    }, 10);
-                }
-
                 lastVibrationTime = now;
             }
 
-            // 6. PROXIMITY SOUND
+            // 7. Legacy sound (iOS-compatible but may be blocked)
             if (soundEnabled && dist < 100) {
                 playProximityBeep(dist);
+            }
+        }
+
+        // --- VISUAL PROXIMITY FEEDBACK ---
+        function updateVisualProximity(dist, now) {
+            const distDisplay = document.getElementById('distanceDisplay');
+            const proximityBar = document.getElementById('proximityBar');
+            const proximityBarFill = document.getElementById('proximityBarFill');
+            const proximityWarning = document.getElementById('proximityWarning');
+            const proximityFlash = document.getElementById('proximityFlash');
+
+            // Color-code distance display
+            if (dist < 10) {
+                distDisplay.style.color = 'var(--neon-red)';
+                distDisplay.style.textShadow = '0 0 20px var(--neon-red)';
+                distDisplay.style.fontSize = '3rem';
+            } else if (dist < 50) {
+                distDisplay.style.color = 'var(--neon-orange)';
+                distDisplay.style.textShadow = '0 0 15px var(--neon-orange)';
+                distDisplay.style.fontSize = '2.5rem';
+            } else if (dist < 100) {
+                distDisplay.style.color = 'var(--neon-cyan)';
+                distDisplay.style.textShadow = '0 0 10px var(--neon-cyan)';
+                distDisplay.style.fontSize = '2rem';
+            } else {
+                distDisplay.style.color = '#fff';
+                distDisplay.style.textShadow = 'none';
+                distDisplay.style.fontSize = '2rem';
+            }
+
+            // Show proximity bar when close
+            if (dist < 100) {
+                proximityBar.style.display = 'block';
+                const percentage = Math.max(0, 100 - dist);
+                proximityBarFill.style.width = percentage + '%';
+            } else {
+                proximityBar.style.display = 'none';
+            }
+
+            // Show warning text when very close
+            if (dist < 20) {
+                proximityWarning.style.display = 'block';
+                if (dist < 5) {
+                    proximityWarning.textContent = '🎯 ARRIVED!';
+                    proximityWarning.style.color = 'var(--neon-red)';
+                } else if (dist < 10) {
+                    proximityWarning.textContent = '⚠️ VERY CLOSE';
+                    proximityWarning.style.color = 'var(--neon-orange)';
+                } else {
+                    proximityWarning.textContent = '→ APPROACHING';
+                    proximityWarning.style.color = 'var(--neon-cyan)';
+                }
+            } else {
+                proximityWarning.style.display = 'none';
+            }
+
+            // Screen flash at specific thresholds
+            if (now - lastVibrationTime > 2000) {
+                if (dist < 10) {
+                    // Flash screen red
+                    proximityFlash.style.display = 'block';
+                    proximityFlash.style.background = 'var(--neon-red)';
+                    setTimeout(() => {
+                        proximityFlash.style.display = 'none';
+                    }, 500);
+                } else if (dist < 50) {
+                    // Flash screen orange
+                    proximityFlash.style.display = 'block';
+                    proximityFlash.style.background = 'var(--neon-orange)';
+                    setTimeout(() => {
+                        proximityFlash.style.display = 'none';
+                    }, 300);
+                }
             }
         }
 
