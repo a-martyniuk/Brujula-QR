@@ -2,10 +2,19 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Brújula QR</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>QR Compass // AR HUD</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.min.js"></script>
     <style>
+        :root {
+            --neon-cyan: #00f3ff;
+            --neon-blue: #0066ff;
+            --neon-orange: #ff9d00;
+            --neon-red: #ff3333;
+            --hud-bg: rgba(0, 5, 16, 0.85);
+            --grid-color: rgba(0, 243, 255, 0.1);
+        }
+
         * {
             margin: 0;
             padding: 0;
@@ -13,559 +22,414 @@
         }
 
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            font-family: 'Courier New', Courier, monospace;
+            background-color: #000;
+            color: var(--neon-cyan);
             overflow: hidden;
+            height: 100vh;
+            width: 100vw;
+        }
+
+        /* CRT/Scanline Effect Overlay */
+        .scanlines {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            background: linear-gradient(
+                to bottom,
+                rgba(255,255,255,0),
+                rgba(255,255,255,0) 50%,
+                rgba(0,0,0,0.2) 50%,
+                rgba(0,0,0,0.2)
+            );
+            background-size: 100% 4px;
+            z-index: 1000;
+            opacity: 0.3;
+        }
+
+        .vignette {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            background: radial-gradient(circle, transparent 50%, rgba(0,0,0,0.8) 100%);
+            z-index: 999;
         }
 
         #app {
-            min-height: 100vh;
             position: relative;
+            height: 100%;
+            width: 100%;
+            background: #000;
+        }
+
+        /* --- Global HUD Elements --- */
+        .hud-container {
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 20px;
+            z-index: 50;
+        }
+
+        .hud-top-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            border-bottom: 1px solid var(--neon-cyan);
+            padding-bottom: 10px;
+            background: linear-gradient(90deg, transparent 0%, rgba(0, 243, 255, 0.1) 50%, transparent 100%);
+        }
+
+        .hud-status {
+            font-size: 0.8rem;
+            text-shadow: 0 0 5px var(--neon-cyan);
+        }
+
+        .hud-coords {
+            font-size: 0.7rem;
+            text-align: right;
+            opacity: 0.8;
+            line-height: 1.4;
+        }
+
+        .hud-center {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 300px;
+            height: 300px;
             display: flex;
             align-items: center;
             justify-content: center;
-            padding: 1rem;
-            transition: background 0.5s ease;
         }
 
-        .frost-overlay {
+        /* Compass Ring */
+        .compass-ring {
             position: absolute;
-            inset: 0;
-            pointer-events: none;
-            opacity: 0;
-            transition: opacity 0.5s ease;
+            width: 280px;
+            height: 280px;
+            border: 2px dashed var(--neon-blue);
+            border-radius: 50%;
+            transition: transform 0.1s linear;
+            box-shadow: 0 0 15px var(--neon-blue);
         }
 
-        .frost-corner {
+        .compass-ring::after {
+            content: '';
             position: absolute;
-            background: radial-gradient(circle, rgba(255, 255, 255, 0.6) 0%, transparent 70%);
-            filter: blur(20px);
-        }
-
-        .frost-corner.top-left {
-            top: 0;
-            left: 0;
-            width: 8rem;
-            height: 8rem;
-        }
-
-        .frost-corner.top-right {
-            top: 0;
-            right: 0;
-            width: 10rem;
-            height: 10rem;
-        }
-
-        .frost-corner.bottom-left {
-            bottom: 0;
-            left: 0;
-            width: 9rem;
-            height: 9rem;
-        }
-
-        .frost-corner.bottom-right {
-            bottom: 0;
-            right: 0;
-            width: 11rem;
-            height: 11rem;
-        }
-
-        .flame-container {
-            position: absolute;
-            inset: 0;
-            display: none;
-            align-items: center;
-            justify-content: center;
-            pointer-events: none;
-        }
-
-        .flame-wrapper {
-            position: relative;
-            width: 300px;
-            height: 400px;
-        }
-
-        .flame {
-            position: absolute;
-            bottom: 0;
+            top: -10px;
             left: 50%;
             transform: translateX(-50%);
-            width: 100px;
-            height: 150px;
-            background: linear-gradient(to top, #ff4500 0%, #ffa500 50%, #ffff00 100%);
-            border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%;
-            opacity: 0.8;
-            filter: blur(20px);
+            width: 0;
+            height: 0;
+            border-left: 10px solid transparent;
+            border-right: 10px solid transparent;
+            border-bottom: 20px solid var(--neon-orange);
+            filter: drop-shadow(0 0 5px var(--neon-orange));
         }
 
-        .flame-1 {
-            animation: flicker 0.4s ease-in-out infinite;
+        .compass-mark {
+            position: absolute;
+            font-weight: bold;
+            font-size: 1.2rem;
+            color: var(--neon-cyan);
+            text-shadow: 0 0 5px var(--neon-cyan);
         }
+        .mark-n { top: 10px; left: 50%; transform: translateX(-50%); color: var(--neon-red); }
+        .mark-s { bottom: 10px; left: 50%; transform: translateX(-50%); }
+        .mark-e { right: 10px; top: 50%; transform: translateY(-50%); }
+        .mark-w { left: 10px; top: 50%; transform: translateY(-50%); }
 
-        .flame-2 {
-            left: 40%;
-            width: 80px;
-            height: 120px;
-            animation: flicker 0.5s ease-in-out infinite 0.1s;
-        }
-
-        .flame-3 {
-            left: 60%;
-            width: 90px;
-            height: 140px;
-            animation: flicker 0.45s ease-in-out infinite 0.2s;
-        }
-
-        .flame-4 {
-            left: 45%;
-            width: 110px;
-            height: 160px;
-            filter: blur(25px);
-            animation: flicker 0.35s ease-in-out infinite 0.15s;
-        }
-
-        .flame-5 {
-            left: 55%;
-            width: 95px;
-            height: 135px;
-            filter: blur(22px);
-            animation: flicker 0.4s ease-in-out infinite 0.25s;
-        }
-
-        @keyframes flicker {
-            0%, 100% {
-                transform: translateX(-50%) scaleY(1) scaleX(1);
-                opacity: 0.8;
-            }
-            50% {
-                transform: translateX(-50%) scaleY(1.1) scaleX(0.95);
-                opacity: 1;
-            }
-        }
-
-        .card {
-            background: rgba(255, 255, 255, 0.1);
-            backdrop-filter: blur(20px);
-            border-radius: 1.5rem;
-            padding: 2rem;
-            max-width: 28rem;
-            width: 100%;
-            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+        /* Reticle */
+        .reticle {
+            width: 40px;
+            height: 40px;
+            border: 2px solid var(--neon-cyan);
             position: relative;
-            z-index: 10;
+            box-shadow: 0 0 10px var(--neon-cyan);
+        }
+        .reticle::before, .reticle::after {
+            content: '';
+            position: absolute;
+            background: var(--neon-cyan);
+        }
+        .reticle::before { top: 50%; left: -10px; right: -10px; height: 2px; transform: translateY(-50%); }
+        .reticle::after { left: 50%; top: -10px; bottom: -10px; width: 2px; transform: translateX(-50%); }
+
+        /* Target Indicator Arrow (Points to destination) */
+        .target-arrow {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 0; 
+            height: 0; 
+            border-left: 15px solid transparent;
+            border-right: 15px solid transparent;
+            border-bottom: 40px solid var(--neon-orange);
+            transform-origin: 50% 100%; /* Pivot from bottom center */
+            margin-left: -15px; /* Center horizontally */
+            margin-top: -140px; /* Position firmly on the ring radius initially */
+            display: none; /* Hidden until target set */
+            filter: drop-shadow(0 0 8px var(--neon-orange));
+            z-index: 40;
         }
 
-        .header {
+        .hud-bottom-bar {
             text-align: center;
-            margin-bottom: 1.5rem;
+            background: rgba(0, 0, 0, 0.6);
+            border: 1px solid var(--neon-blue);
+            padding: 15px;
+            margin-top: auto;
+            backdrop-filter: blur(5px);
+            clip-path: polygon(10% 0, 90% 0, 100% 100%, 0% 100%);
         }
 
-        .icon {
-            width: 4rem;
-            height: 4rem;
-            margin: 0 auto 1rem;
+        .metric-group {
             display: flex;
-            align-items: center;
-            justify-content: center;
+            justify-content: space-around;
+            margin-bottom: 5px;
         }
 
-        .icon svg {
+        .metric {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .metric-label {
+            font-size: 0.7rem;
+            color: var(--neon-blue);
+            letter-spacing: 2px;
+        }
+
+        .metric-value {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #fff;
+            text-shadow: 0 0 10px var(--neon-cyan);
+        }
+
+        .dist-value { color: var(--neon-orange); text-shadow: 0 0 10px var(--neon-orange); }
+
+        /* Screens */
+        #scanScreen, #compassScreen {
+            display: none;
             width: 100%;
             height: 100%;
-            color: #60a5fa;
         }
 
-        h1 {
-            font-size: 1.875rem;
-            font-weight: bold;
-            color: white;
-            margin-bottom: 0.5rem;
+        .active-screen {
+            display: block !important;
         }
 
-        .subtitle {
-            color: #bfdbfe;
-            margin-bottom: 0.5rem;
-        }
-
-        .info-text {
-            font-size: 0.875rem;
-            color: #9ca3af;
-        }
-
-        .status {
-            font-size: 0.875rem;
-            color: #fcd34d;
-            font-weight: 600;
-            margin-top: 0.75rem;
-        }
-
-        .video-container {
-            position: relative;
-            border-radius: 1rem;
-            overflow: hidden;
-            background: black;
-            aspect-ratio: 1;
-            margin-bottom: 1rem;
-        }
-
-        video {
+        /* --- Scanner Specifics --- */
+        .camera-feed {
+            position: absolute;
+            top: 0;
+            left: 0;
             width: 100%;
             height: 100%;
             object-fit: cover;
-        }
-
-        canvas {
-            display: none;
+            z-index: 10;
         }
 
         .scan-frame {
             position: absolute;
-            inset: 3rem;
-            border: 4px solid rgba(96, 165, 250, 0.5);
-            border-radius: 0.5rem;
-            pointer-events: none;
-        }
-
-        .error-message {
-            width: 100%;
-            height: 100%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            text-align: center;
-            color: white;
-            padding: 1rem;
-        }
-
-        button {
-            width: 100%;
-            background: #3b82f6;
-            color: white;
-            font-weight: 600;
-            padding: 0.75rem;
-            border-radius: 0.75rem;
-            border: none;
-            cursor: pointer;
-            transition: background 0.2s;
-        }
-
-        button:hover {
-            background: #2563eb;
-        }
-
-        button.secondary {
-            background: #475569;
-        }
-
-        button.secondary:hover {
-            background: #334155;
-        }
-
-        button.ios-btn {
-            background: #eab308;
-            color: black;
-            margin-bottom: 1rem;
-        }
-
-        button.ios-btn:hover {
-            background: #ca8a04;
-        }
-
-        .compass-container {
-            position: relative;
-            width: 18rem;
-            height: 18rem;
-            margin: 0 auto 2rem;
-        }
-
-        .compass-bg {
-            position: absolute;
-            inset: 0;
-            border-radius: 50%;
-            background: linear-gradient(135deg, rgba(59, 130, 246, 0.2), rgba(168, 85, 247, 0.2));
-            border: 4px solid rgba(96, 165, 250, 0.3);
-        }
-
-        .compass-directions {
-            position: absolute;
-            inset: 0;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-
-        .direction {
-            position: absolute;
-            font-weight: bold;
-            color: white;
-        }
-
-        .direction.n {
-            top: 0.5rem;
-            font-size: 1.25rem;
-        }
-
-        .direction.s {
-            bottom: 0.5rem;
-            color: rgba(255, 255, 255, 0.5);
-        }
-
-        .direction.e {
-            right: 0.5rem;
-            color: rgba(255, 255, 255, 0.5);
-        }
-
-        .direction.w {
-            left: 0.5rem;
-            color: rgba(255, 255, 255, 0.5);
-        }
-
-        .compass-needle {
-            position: absolute;
-            inset: 0;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: transform 0.3s ease-out;
-        }
-
-        .needle {
-            position: relative;
-        }
-
-        .needle-north {
-            width: 0.5rem;
-            height: 8rem;
-            background: linear-gradient(to bottom, #ef4444, #dc2626);
-            border-radius: 9999px;
-            position: absolute;
-            top: -8rem;
+            top: 50%;
             left: 50%;
-            transform: translateX(-50%);
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+            transform: translate(-50%, -50%);
+            width: 250px;
+            height: 250px;
+            border: 2px solid var(--neon-cyan);
+            box-shadow: 0 0 20px var(--neon-cyan), inset 0 0 20px var(--neon-cyan);
         }
-
-        .needle-south {
-            width: 0.5rem;
-            height: 8rem;
-            background: linear-gradient(to top, rgba(255, 255, 255, 0.8), rgba(255, 255, 255, 0.4));
-            border-radius: 9999px;
+        
+        .scan-line {
+            width: 100%;
+            height: 4px;
+            background: var(--neon-cyan);
             position: absolute;
             top: 0;
-            left: 50%;
-            transform: translateX(-50%);
+            animation: scan 2s infinite linear;
+            box-shadow: 0 0 10px var(--neon-cyan);
         }
 
-        .needle-center {
-            width: 1.5rem;
-            height: 1.5rem;
-            background: white;
-            border-radius: 50%;
-            border: 4px solid #ef4444;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+        @keyframes scan {
+            0% { top: 0; opacity: 0; }
+            10% { opacity: 1; }
+            90% { opacity: 1; }
+            100% { top: 100%; opacity: 0; }
         }
 
-        .compass-dot {
-            position: absolute;
-            inset: 0;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-
-        .dot {
-            width: 1rem;
-            height: 1rem;
-            background: #3b82f6;
-            border-radius: 50%;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
-        }
-
-        .distance-display {
-            font-size: 3.75rem;
+        /* Buttons */
+        .btn-cyber {
+            background: transparent;
+            border: 1px solid var(--neon-cyan);
+            color: var(--neon-cyan);
+            padding: 10px 20px;
+            font-family: inherit;
+            text-transform: uppercase;
             font-weight: bold;
-            color: #60a5fa;
-            margin-bottom: 0.5rem;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin-top: 10px;
+            pointer-events: auto;
+            backdrop-filter: blur(4px);
+            box-shadow: 0 0 5px var(--neon-cyan);
         }
 
-        .arrived {
-            font-size: 1.5rem;
-            font-weight: bold;
-            color: #fbbf24;
-            margin-top: 1rem;
-            animation: pulse 2s ease-in-out infinite;
+        .btn-cyber:hover {
+            background: var(--neon-cyan);
+            color: #000;
+            box-shadow: 0 0 20px var(--neon-cyan);
+        }
+        
+        .btn-secondary {
+            border-color: var(--neon-red);
+            color: var(--neon-red);
+            box-shadow: 0 0 5px var(--neon-red);
+        }
+        .btn-secondary:hover {
+            background: var(--neon-red);
+            box-shadow: 0 0 20px var(--neon-red);
         }
 
-        @keyframes pulse {
-            0%, 100% {
-                opacity: 1;
-            }
-            50% {
-                opacity: 0.5;
-            }
-        }
-
-        .info-card {
-            background: rgba(255, 255, 255, 0.05);
-            border-radius: 0.75rem;
-            padding: 1rem;
-            margin-bottom: 1rem;
-        }
-
-        .info-label {
-            color: #bfdbfe;
-            font-size: 0.875rem;
-            margin-bottom: 0.25rem;
-        }
-
-        .info-value {
-            color: white;
-            font-size: 1.5rem;
-            font-weight: bold;
-        }
-
-        .note {
-            font-size: 0.75rem;
-            text-align: center;
-            color: #9ca3af;
-            margin-top: 0.75rem;
-        }
-
-        #scanScreen, #compassScreen {
-            display: none;
-        }
+        /* Helper Utilities */
+        canvas { display: none; }
     </style>
 </head>
 <body>
+    <div class="scanlines"></div>
+    <div class="vignette"></div>
+
     <div id="app">
-        <div class="frost-overlay" id="frostOverlay">
-            <div class="frost-corner top-left"></div>
-            <div class="frost-corner top-right"></div>
-            <div class="frost-corner bottom-left"></div>
-            <div class="frost-corner bottom-right"></div>
-        </div>
-
-        <div class="flame-container" id="flameContainer">
-            <div class="flame-wrapper">
-                <div class="flame flame-1"></div>
-                <div class="flame flame-2"></div>
-                <div class="flame flame-3"></div>
-                <div class="flame flame-4"></div>
-                <div class="flame flame-5"></div>
-            </div>
-        </div>
-
-        <div id="scanScreen">
-            <div class="card">
-                <div class="header">
-                    <div class="icon">
-                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
-                        </svg>
-                    </div>
-                    <h1>Escanear QR</h1>
-                    <p class="subtitle">Apunta la cámara al código QR</p>
-                    <p class="info-text">El QR debe contener coordenadas</p>
-                    <p class="info-text" style="font-size: 0.75rem; margin-top: 0.25rem;">Formato: 40.7589,-73.9851</p>
-                    <p class="status" id="scanStatus"></p>
-                </div>
-
-                <div class="video-container">
-                    <video id="video" autoplay playsinline muted></video>
-                    <canvas id="canvas"></canvas>
-                    <div class="scan-frame"></div>
-                    <div class="error-message" id="cameraError" style="display: none;">
-                        <div>
-                            <p style="font-size: 1.125rem; margin-bottom: 0.5rem;">⚠️ No se pudo acceder a la cámara</p>
-                            <p style="font-size: 0.875rem; color: #d1d5db;">Permite el acceso en la configuración</p>
-                        </div>
+        <!-- SCAN SCREEN -->
+        <div id="scanScreen" class="active-screen">
+            <video id="video" class="camera-feed" autoplay playsinline muted></video>
+            <canvas id="canvas"></canvas>
+            
+            <div class="hud-container">
+                <div class="hud-top-bar">
+                    <div class="hud-status">SYSTEM: SCAN_MODE</div>
+                    <div class="hud-coords" id="scanCoords">
+                        LAT: --.----<br>
+                        LON: --.----
                     </div>
                 </div>
 
-                <button onclick="useExample()">Usar coordenadas de ejemplo</button>
-                <p class="note">Nota: En dispositivos móviles necesitas dar permisos de cámara</p>
+                <div class="scan-frame">
+                    <div class="scan-line"></div>
+                </div>
+
+                <div style="position: absolute; bottom: 80px; width: 100%; text-align: center; pointer-events: none;">
+                    <p style="background: rgba(0,0,0,0.7); display: inline-block; padding: 5px 10px; margin-bottom: 10px;">SCAN TARGET QR</p>
+                    <br>
+                    <button class="btn-cyber" onclick="useExample()">SIMULATE SIGNAL</button>
+                    <p id="scanStatus" style="margin-top: 10px; font-size: 0.8rem;"></p>
+                </div>
             </div>
         </div>
 
+        <!-- COMPASS/HUD SCREEN -->
         <div id="compassScreen">
-            <div class="card">
-                <div class="header">
-                    <div class="icon" style="width: 3rem; height: 3rem;">
-                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                        </svg>
+             <!-- Background for compass mode (if no camera) -->
+             <div style="position:absolute; inset:0; background: radial-gradient(circle at center, #0a192f 0%, #000 100%); z-index: 1;"></div>
+             
+             <div class="hud-container" style="z-index: 50;">
+                <div class="hud-top-bar">
+                    <div>
+                        <div class="hud-status">NAV_SYSTEM: ONLINE</div>
+                        <div style="font-size: 1.2rem; font-weight: bold; color: var(--neon-orange);" id="targetName">TARGET ACQUIRED</div>
                     </div>
-                    <h1>Navegación</h1>
-                    <div class="distance-display" id="distanceDisplay">0m</div>
-                    <p class="subtitle">hasta el destino</p>
-                    <p class="info-text" id="targetName"></p>
-                    <p class="arrived" id="arrivedMsg" style="display: none;">🔥 ¡LLEGASTE! 🔥</p>
-                    <p class="status" id="compassStatus"></p>
+                    <div class="hud-coords" id="navCoords">
+                        TGT_LAT: 00.0000<br>
+                        TGT_LON: 00.0000
+                    </div>
                 </div>
 
-                <button class="ios-btn" id="iosBtn" style="display: none;" onclick="requestOrientation()">
-                    🧭 Activar Brújula (iOS)
-                </button>
-
-                <div class="compass-container">
-                    <div class="compass-bg"></div>
-                    <div class="compass-directions">
-                        <div class="direction n">N</div>
-                        <div class="direction s">S</div>
-                        <div class="direction e">E</div>
-                        <div class="direction w">O</div>
+                <div class="hud-center">
+                    <!-- The ring rotates to show North relative to user -->
+                    <div class="compass-ring" id="compassRing">
+                        <div class="compass-mark mark-n">N</div>
+                        <div class="compass-mark mark-s">S</div>
+                        <div class="compass-mark mark-e">E</div>
+                        <div class="compass-mark mark-w">W</div>
+                        
+                        <!-- The arrow points to target relative to North within the ring system -->
+                        <div class="target-arrow" id="targetArrow"></div>
                     </div>
-                    <div class="compass-needle" id="compassNeedle">
-                        <div class="needle">
-                            <div class="needle-north"></div>
-                            <div class="needle-south"></div>
-                            <div class="needle-center"></div>
+                    <div class="reticle"></div>
+                </div>
+
+                <div class="hud-bottom-bar">
+                    <div class="metric-group">
+                        <div class="metric">
+                            <span class="metric-label">DIST</span>
+                            <span class="metric-value dist-value" id="distanceDisplay">0<span style="font-size:0.8rem">m</span></span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">BRNG</span>
+                            <span class="metric-value" id="bearingDisplay">000°</span>
+                        </div>
+                        <div class="metric">
+                            <span class="metric-label">HDNG</span>
+                            <span class="metric-value" id="headingDisplay">000°</span>
                         </div>
                     </div>
-                    <div class="compass-dot">
-                        <div class="dot"></div>
-                    </div>
+                    <button class="btn-cyber btn-secondary" onclick="resetApp()">CANCEL NAV</button>
+                    <button id="iosBtn" class="btn-cyber" style="display:none; margin-top:5px;" onclick="requestOrientation()">ENABLE SENSORS</button>
                 </div>
-
-                <div class="info-card">
-                    <div style="text-align: center;">
-                        <div class="info-label">Dirección</div>
-                        <div class="info-value" id="bearingDisplay">0°</div>
-                    </div>
-                </div>
-
-                <button class="secondary" onclick="resetApp()">Escanear nuevo QR</button>
             </div>
         </div>
     </div>
 
     <script>
+        // --- Logic Core ---
         let stream = null;
         let scanInterval = null;
         let target = null;
         let userLocation = null;
-        let heading = 0;
-        let distance = 0;
-        let bearing = 0;
+        let heading = 0; // Phone's orientation relative to North (0-360)
+        let bearing = 0; // Angle from user to target relative to North
+        let scanCoordsEl = document.getElementById('scanCoords');
+        let navCoordsEl = document.getElementById('navCoords');
 
-        function showScreen(screen) {
-            document.getElementById('scanScreen').style.display = screen === 'scan' ? 'block' : 'none';
-            document.getElementById('compassScreen').style.display = screen === 'compass' ? 'block' : 'none';
+        // Random deco coordinate update
+        setInterval(() => {
+            const lat = (Math.random() * 180 - 90).toFixed(4);
+            const lon = (Math.random() * 360 - 180).toFixed(4);
+            const txt = `LAT: ${lat}<br>LON: ${lon}`;
+            if(document.getElementById('scanScreen').style.display !== 'none') scanCoordsEl.innerHTML = txt;
+        }, 300);
+
+        function showScreen(screenName) {
+            document.querySelectorAll('#app > div').forEach(el => el.classList.remove('active-screen'));
+            document.getElementById(screenName + 'Screen').classList.add('active-screen');
+            if(screenName === 'compass') {
+                navCoordsEl.innerHTML = `TGT_LAT: ${target?.lat?.toFixed(4) || '???'}<br>TGT_LON: ${target?.lon?.toFixed(4) || '???'}`;
+            }
         }
 
+        // --- GPS & Math ---
         function calculateDistance(lat1, lon1, lat2, lon2) {
             const R = 6371000;
             const phi1 = lat1 * Math.PI / 180;
             const phi2 = lat2 * Math.PI / 180;
             const deltaPhi = (lat2 - lat1) * Math.PI / 180;
             const deltaLambda = (lon2 - lon1) * Math.PI / 180;
-
             const a = Math.sin(deltaPhi/2) * Math.sin(deltaPhi/2) +
                       Math.cos(phi1) * Math.cos(phi2) *
                       Math.sin(deltaLambda/2) * Math.sin(deltaLambda/2);
             const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-
             return R * c;
         }
 
@@ -573,60 +437,18 @@
             const phi1 = lat1 * Math.PI / 180;
             const phi2 = lat2 * Math.PI / 180;
             const deltaLambda = (lon2 - lon1) * Math.PI / 180;
-
             const y = Math.sin(deltaLambda) * Math.cos(phi2);
             const x = Math.cos(phi1) * Math.sin(phi2) -
                       Math.sin(phi1) * Math.cos(phi2) * Math.cos(deltaLambda);
-            
             const theta = Math.atan2(y, x);
             return (theta * 180 / Math.PI + 360) % 360;
         }
 
-        function updateTheme(dist) {
-            const app = document.getElementById('app');
-            const frostOverlay = document.getElementById('frostOverlay');
-            const flameContainer = document.getElementById('flameContainer');
-            const arrivedMsg = document.getElementById('arrivedMsg');
-
-            const maxDist = 1000;
-            const minDist = 10;
-
-            if (dist <= minDist) {
-                app.style.background = '#000000';
-                frostOverlay.style.opacity = '0';
-                flameContainer.style.display = 'flex';
-                arrivedMsg.style.display = 'block';
-                return;
-            }
-
-            flameContainer.style.display = 'none';
-            arrivedMsg.style.display = 'none';
-
-            const progress = Math.max(0, Math.min(1, 1 - (dist / maxDist)));
-
-            if (progress < 0.33) {
-                const intensity = progress / 0.33;
-                app.style.background = `rgba(15, 23, 42, ${0.95 - intensity * 0.5})`;
-                frostOverlay.style.opacity = `${0.3 * (1 - intensity)}`;
-            } else if (progress < 0.66) {
-                const intensity = (progress - 0.33) / 0.33;
-                app.style.background = `linear-gradient(135deg, 
-                    rgba(30, 58, 138, ${1 - intensity}), 
-                    rgba(120, 53, 15, ${intensity}))`;
-                frostOverlay.style.opacity = '0';
-            } else {
-                const intensity = (progress - 0.66) / 0.34;
-                app.style.background = `linear-gradient(135deg, 
-                    rgba(153, 27, 27, ${intensity}), 
-                    rgba(217, 119, 6, ${intensity}))`;
-                frostOverlay.style.opacity = '0';
-            }
-        }
-
+        // --- Camera & QR ---
         async function startCamera() {
             try {
-                document.getElementById('scanStatus').textContent = 'Solicitando permiso de cámara...';
-                document.getElementById('cameraError').style.display = 'none';
+                const statusEl = document.getElementById('scanStatus');
+                statusEl.textContent = 'INITIALIZING OPTICS...';
                 
                 stream = await navigator.mediaDevices.getUserMedia({
                     video: { facingMode: 'environment' }
@@ -634,13 +456,13 @@
                 
                 const video = document.getElementById('video');
                 video.srcObject = stream;
-                document.getElementById('scanStatus').textContent = 'Cámara activada - Escanea un QR';
+                statusEl.textContent = 'OPTICS ONLINE // SEARCHING...';
                 
                 scanInterval = setInterval(scanQR, 300);
             } catch (err) {
-                console.error('Error al acceder a la cámara:', err);
-                document.getElementById('scanStatus').textContent = 'Error: No se pudo acceder a la cámara';
-                document.getElementById('cameraError').style.display = 'flex';
+                console.error(err);
+                document.getElementById('scanStatus').textContent = 'ERR: CAMERA ACCESS DENIED';
+                document.getElementById('scanStatus').style.color = 'var(--neon-red)';
             }
         }
 
@@ -658,37 +480,31 @@
         function scanQR() {
             const video = document.getElementById('video');
             const canvas = document.getElementById('canvas');
-            
             if (video.readyState !== video.HAVE_ENOUGH_DATA) return;
 
             const ctx = canvas.getContext('2d');
             canvas.width = video.videoWidth;
             canvas.height = video.videoHeight;
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
             const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
             const code = jsQR(imageData.data, imageData.width, imageData.height);
 
             if (code) {
                 try {
+                     // Try parsing JSON first
                     const data = JSON.parse(code.data);
                     if (data.lat && data.lon) {
-                        target = data;
-                        stopCamera();
-                        showScreen('compass');
-                        startCompass();
+                        lockTarget(data);
                         return;
                     }
                 } catch (e) {
+                    // Try lat,lon format
                     const coords = code.data.split(',');
                     if (coords.length === 2) {
                         const lat = parseFloat(coords[0].trim());
                         const lon = parseFloat(coords[1].trim());
                         if (!isNaN(lat) && !isNaN(lon)) {
-                            target = { lat: lat, lon: lon };
-                            stopCamera();
-                            showScreen('compass');
-                            startCompass();
+                            lockTarget({ lat, lon, name: 'UNK_LOC' });
                         }
                     }
                 }
@@ -696,37 +512,35 @@
         }
 
         function useExample() {
-            target = { lat: 40.7589, lon: -73.9851, name: 'Times Square, NY' };
+            lockTarget({ lat: 40.7589, lon: -73.9851, name: 'TIMES_SQ' });
+        }
+
+        function lockTarget(data) {
+            target = data;
             stopCamera();
             showScreen('compass');
             startCompass();
+            document.getElementById('targetArrow').style.display = 'block';
+            document.getElementById('targetName').textContent = (target.name || 'TARGET').toUpperCase();
         }
 
+        // --- Compass Logic ---
         function startCompass() {
-            document.getElementById('compassStatus').textContent = 'Obteniendo ubicación...';
-            
-            if (target.name) {
-                document.getElementById('targetName').textContent = target.name;
-            }
-
+            // iOS Permission Check
             if (typeof DeviceOrientationEvent !== 'undefined' && 
                 typeof DeviceOrientationEvent.requestPermission === 'function') {
-                document.getElementById('iosBtn').style.display = 'block';
+                document.getElementById('iosBtn').style.display = 'inline-block';
             }
 
             navigator.geolocation.watchPosition(
-                (position) => {
+                (pos) => {
                     userLocation = {
-                        lat: position.coords.latitude,
-                        lon: position.coords.longitude
+                        lat: pos.coords.latitude,
+                        lon: pos.coords.longitude
                     };
-                    document.getElementById('compassStatus').textContent = 'Ubicación obtenida';
-                    updateNavigation();
+                    updateHUD();
                 },
-                (error) => {
-                    console.error('Error obteniendo ubicación:', error);
-                    document.getElementById('compassStatus').textContent = 'Error: Activa la ubicación en tu dispositivo';
-                },
+                (err) => console.error(err),
                 { enableHighAccuracy: true, maximumAge: 0, timeout: 5000 }
             );
 
@@ -735,36 +549,16 @@
         }
 
         function handleOrientation(event) {
-            if (event.alpha !== null) {
-                heading = 360 - event.alpha;
-                updateNavigation();
+            // Priority: absolute > alpha (Android usually absolute, iOS needs calculation)
+            let alpha = event.alpha;
+            // Handle iOS webkitCompassHeading if available
+            if (event.webkitCompassHeading) {
+                heading = event.webkitCompassHeading; 
+            } else if (alpha !== null) {
+                // Approximate for others, 360 - alpha is typical
+                heading = 360 - alpha;
             }
-        }
-
-        function updateNavigation() {
-            if (!userLocation || !target) return;
-
-            distance = Math.round(calculateDistance(
-                userLocation.lat,
-                userLocation.lon,
-                target.lat,
-                target.lon
-            ));
-
-            bearing = calculateBearing(
-                userLocation.lat,
-                userLocation.lon,
-                target.lat,
-                target.lon
-            );
-
-            document.getElementById('distanceDisplay').textContent = distance + 'm';
-            document.getElementById('bearingDisplay').textContent = Math.round(bearing) + '°';
-
-            const compassRotation = bearing - heading;
-            document.getElementById('compassNeedle').style.transform = `rotate(${compassRotation}deg)`;
-
-            updateTheme(distance);
+            updateHUD();
         }
 
         async function requestOrientation() {
@@ -773,29 +567,66 @@
                 try {
                     const permission = await DeviceOrientationEvent.requestPermission();
                     if (permission === 'granted') {
-                        document.getElementById('compassStatus').textContent = 'Sensores activados';
+                        document.getElementById('iosBtn').style.display = 'none';
                     }
                 } catch (err) {
-                    console.error('Error al solicitar permiso de orientación:', err);
+                    alert('Sensor permission required for compass');
                 }
             }
+        }
+
+        function updateHUD() {
+            if (!userLocation || !target) return;
+
+            // 1. Calculate values
+            const dist = Math.round(calculateDistance(userLocation.lat, userLocation.lon, target.lat, target.lon));
+            bearing = calculateBearing(userLocation.lat, userLocation.lon, target.lat, target.lon);
+
+            // 2. Update Text
+            document.getElementById('distanceDisplay').innerHTML = `${dist}<span style="font-size:0.8rem">m</span>`;
+            document.getElementById('bearingDisplay').textContent = Math.round(bearing).toString().padStart(3, '0') + '°';
+            document.getElementById('headingDisplay').textContent = Math.round(heading).toString().padStart(3, '0') + '°';
+
+            // 3. Update Visuals
+            // Rotate the compass ring so user's heading is always UP (which is 0deg for CSS rotate?)
+            // Actually, usually a compass rotates AGAINST the heading so North stays North.
+            // If I face North (0), ring is 0. If I face East (90), North should be at -90 (Left).
+            const ringRotation = -heading;
+            document.getElementById('compassRing').style.transform = `translate(-50%, -50%) rotate(${ringRotation}deg)`;
+
+            // Rotate target arrow.
+            // The arrow is inside the ring. If ring rotates -heading, 
+            // the arrow needs to be at 'bearing' relative to North.
+            // Since the ring container itself is rotated by -heading, 
+            // any child rotated by X degrees will be at (X - heading) degrees effectively.
+            // We want the arrow to point to 'bearing' absolute.
+            // So if we just rotate the arrow by 'bearing', it will be at 'bearing' relative to the ring's 0 (North).
+            // Example: Bearing 90 (East). Heading 0 (North). Ring Rot: 0. Arrow Rot: 90. Result: Arrow Right. Correct.
+            // Example: Bearing 90 (East). Heading 90 (East). Ring Rot: -90. Arrow Rot: 90.
+            // Visually: The "N" marks connects to ring and moves to -90 (Left).
+            // Arrow is at +90 relative to the N mark. -90 + 90 = 0 (Up). 
+            // Result: Arrow points UP. The user is facing East, checking target East -> Target is straight ahead. Correct.
+            
+            // However, our arrow CSS is top-centered? No, I set it to transform-origin bottom center, and positioned it.
+            // Let's refine the Arrow CSS logic in the <style> to be simpler.
+            // Actually, simpler logic:
+            // Rotate the ARROW element by (bearing) degrees. It is a child of the ring? 
+            // YES. If it is a child of the ring, and the ring rotates by -heading, then the arrow rotates by (bearing).
+            // Total visual rotation = bearing - heading.
+            document.getElementById('targetArrow').style.transform = `translateX(-50%) rotate(${bearing}deg)`;
         }
 
         function resetApp() {
             target = null;
             userLocation = null;
-            heading = 0;
-            distance = 0;
-            bearing = 0;
-            document.getElementById('app').style.background = '#000000';
-            document.getElementById('frostOverlay').style.opacity = '0';
-            document.getElementById('flameContainer').style.display = 'none';
-            window.removeEventListener('deviceorientationabsolute', handleOrientation, true);
-            window.removeEventListener('deviceorientation', handleOrientation, true);
+            document.getElementById('scanScreen').style.display = 'block';
+            document.getElementById('compassScreen').style.display = 'none';
+            document.getElementById('targetArrow').style.display = 'none';
             showScreen('scan');
             startCamera();
         }
 
+        // Init
         showScreen('scan');
         startCamera();
     </script>
