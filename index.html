@@ -73,10 +73,21 @@
 
         /* State: Frozen (> 100m) */
         .state-ice {
-            box-shadow: inset 0 0 100px #fff, inset 0 0 200px var(--neon-cyan);
-            /* Stronger white/cyan */
-            background: radial-gradient(circle, transparent 40%, rgba(0, 243, 255, 0.3) 80%, rgba(255, 255, 255, 0.6) 100%);
-            animation: ice-pulse 3s infinite alternate;
+            /* Aggressive "Google Goggles" Frost */
+            box-shadow: inset 0 0 50px rgba(255, 255, 255, 0.8), inset 0 0 150px var(--neon-cyan);
+            background: radial-gradient(circle at center, transparent 40%, rgba(255, 255, 255, 0.8) 95%);
+            backdrop-filter: blur(8px) grayscale(0.5);
+            animation: ice-shiver 0.2s infinite;
+        }
+
+        @keyframes ice-shiver {
+            0% {
+                transform: translate(1px, 1px);
+            }
+
+            100% {
+                transform: translate(-1px, -1px);
+            }
         }
 
         @keyframes ice-pulse {
@@ -92,45 +103,51 @@
 
         /* State: Melting (10 - 100m) */
         .state-melt {
-            box-shadow: inset 0 0 80px var(--neon-blue);
-            background: linear-gradient(to bottom, rgba(0, 243, 255, 0.2) 0%, transparent 80%);
-            /* Dripping look */
-            opacity: 0.7;
-            animation: melt-drip 2s infinite linear;
+            /* Heavy Rain/Drip Effect */
+            background: repeating-linear-gradient(180deg,
+                    transparent 0,
+                    rgba(0, 100, 255, 0.3) 40%,
+                    rgba(0, 200, 255, 0.5) 50%,
+                    transparent 60%);
+            background-size: 100% 200%;
+            box-shadow: inset 0 0 100px rgba(0, 100, 255, 0.5);
+            backdrop-filter: blur(3px);
+            animation: melt-cascade 0.8s infinite linear;
         }
 
-        @keyframes melt-drip {
+        @keyframes melt-cascade {
             0% {
-                background-position: 0 -100px;
-                opacity: 0.7;
+                background-position: 0 0;
             }
 
             100% {
-                background-position: 0 0;
-                opacity: 0.5;
+                background-position: 0 200%;
             }
         }
 
         /* State: Overheat (< 10m) */
         .state-heat {
-            box-shadow: inset 0 0 100px var(--neon-red), inset 0 0 50px var(--neon-orange);
-            background: radial-gradient(circle, transparent 40%, rgba(255, 0, 0, 0.4) 90%, rgba(255, 165, 0, 0.6) 100%);
-            animation: heat-pulse 0.4s infinite alternate;
-            /* Faster pulse */
+            /* Emergency Strobe */
+            box-shadow: inset 0 0 150px red;
+            background: radial-gradient(circle, transparent 30%, rgba(255, 0, 0, 0.6) 90%);
+            animation: heat-strobe 0.3s infinite;
         }
 
-        @keyframes heat-pulse {
+        @keyframes heat-strobe {
             0% {
-                opacity: 0.7;
-                transform: scale(1);
+                opacity: 0.3;
+                background-color: rgba(255, 0, 0, 0);
+            }
+
+            50% {
+                opacity: 1;
+                background-color: rgba(255, 0, 0, 0.3);
             }
 
             100% {
-                opacity: 1;
-                transform: scale(1.02);
+                opacity: 0.3;
+                background-color: rgba(255, 0, 0, 0);
             }
-
-            /* Slight breathing */
         }
 
         #app {
@@ -492,8 +509,6 @@
                         <div class="hud-status">NAV_SYSTEM: ONLINE</div>
                         <div style="font-size: 1.2rem; font-weight: bold; color: var(--neon-orange);" id="targetName">
                             TARGET ACQUIRED</div>
-                        <div style="font-size: 0.8rem; color: #fff; margin-top: 5px;" id="envStatus">ENV: DETECTING...
-                        </div>
                     </div>
                     <div class="hud-coords" id="navCoords">
                         TGT_LAT: 00.0000<br>
@@ -829,21 +844,17 @@
 
         function updateEnvironment(dist) {
             const envEl = document.getElementById('envOverlay');
-            const statusEl = document.getElementById('envStatus'); // DEBUG TEXT
             envEl.className = 'env-overlay'; // Reset
 
             if (dist > 100) {
                 // Freezer
                 envEl.classList.add('state-ice');
-                if (statusEl) statusEl.innerHTML = `TEMP: <span style="color:cyan">FREEZING</span> (${dist}m)`;
             } else if (dist > 10) {
                 // Melting
                 envEl.classList.add('state-melt');
-                if (statusEl) statusEl.innerHTML = `TEMP: <span style="color:#0088ff">THAWING</span> (${dist}m)`;
             } else {
                 // Overheat / Fire
                 envEl.classList.add('state-heat');
-                if (statusEl) statusEl.innerHTML = `TEMP: <span style="color:red">CRITICAL</span> (${dist}m)`;
             }
         }
 
