@@ -10,10 +10,19 @@ Experimentación de navegación WebAR utilizando sensores del dispositivo (Giros
 *   **Scanner QR Integrado:** Detección de objetivos mediante códigos QR (Formato JSON o lat,lon).
 *   **Privacidad:** Todo el procesamiento ocurre en el cliente (Browser).
 
-## 🚀 Demo
+## 🚀 Despliegue y Testing
 
-Accede a la aplicación desde cualquier navegador móvil moderno (Chrome/Safari recomendado).
-Requiere permisos de **Cámara** y **Sensores de Movimiento**.
+Para probar la aplicación en un dispositivo móvil, es **obligatorio usar HTTPS**, ya que los navegadores bloquean el acceso a la cámara y sensores en conexiones inseguras (HTTP).
+
+### Opción Recomendada: GitHub Pages
+1.  Ve a `Settings > Pages` en tu repositorio.
+2.  Selecciona la rama `main` como fuente.
+3.  Accede a la URL generada (ej: `https://tu-usuario.github.io/Brujula-QR/`).
+
+### Opción Local (Solo Desarrollo)
+Si necesitas probar localmente en tu PC:
+1.  Usa `localhost` (los navegadores lo tratan como seguro).
+2.  Para móvil en red local, necesitarás configurar un proxy HTTPS o usar herramientas como `ngrok`.
 
 ## 🛠 Tecnologías
 
