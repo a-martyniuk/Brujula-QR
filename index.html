@@ -1203,20 +1203,34 @@
         }
 
         async function shareQR() {
-            const qrCanvas = document.querySelector('#qrcode canvas');
-            if (!qrCanvas) {
-                // Fallback for img tag if qrcodejs produced img
-                const qrImg = document.querySelector('#qrcode img');
-                if (qrImg) {
-                    // Won't handle img src data url conversion for now unless needed
-                    alert('ERROR: CANVAS NOT FOUND');
-                    return;
-                }
+            const qrImg = document.querySelector('#qrcode img');
+
+            if (!qrImg) {
+                alert('ERROR: QR IMAGE NOT FOUND');
+                return;
             }
 
             try {
+                // Convert img to canvas first
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+
+                // Wait for image to load
+                await new Promise((resolve, reject) => {
+                    if (qrImg.complete) {
+                        resolve();
+                    } else {
+                        qrImg.onload = resolve;
+                        qrImg.onerror = reject;
+                    }
+                });
+
+                canvas.width = qrImg.naturalWidth || qrImg.width;
+                canvas.height = qrImg.naturalHeight || qrImg.height;
+                ctx.drawImage(qrImg, 0, 0);
+
                 // Convert canvas to blob
-                qrCanvas.toBlob(async (blob) => {
+                canvas.toBlob(async (blob) => {
                     const file = new File([blob], "target_nav_data.png", { type: "image/png" });
 
                     if (navigator.share) {
@@ -1231,7 +1245,7 @@
                 });
             } catch (err) {
                 console.error(err);
-                alert('TRANSMISSION FAILED');
+                alert('TRANSMISSION FAILED: ' + err.message);
             }
         }
 
