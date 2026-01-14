@@ -175,6 +175,34 @@
             border: 2px solid var(--neon-cyan);
             box-shadow: 0 0 15px var(--neon-cyan);
             margin-bottom: 20px;
+            position: relative;
+            /* For Crosshair */
+        }
+
+        .map-crosshair {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 40px;
+            height: 40px;
+            border: 2px solid var(--neon-orange);
+            border-radius: 50%;
+            z-index: 1000;
+            pointer-events: none;
+            box-shadow: 0 0 10px var(--neon-orange);
+        }
+
+        .map-crosshair::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 4px;
+            height: 4px;
+            background: var(--neon-orange);
+            box-shadow: 0 0 5px var(--neon-orange);
         }
 
         .leaflet-container {
@@ -186,6 +214,8 @@
             flex-direction: column;
             gap: 15px;
             padding: 20px;
+            pointer-events: auto;
+            /* ENABLE INPUT */
         }
 
         .input-cyber {
@@ -196,6 +226,8 @@
             font-family: inherit;
             font-size: 1rem;
             width: 100%;
+            pointer-events: auto;
+            /* ENABLE INPUT */
         }
 
         #qrResultModal {
@@ -645,8 +677,9 @@
                         SCAN TARGET QR</p>
                     <br>
                     <br>
+                    <br>
                     <button class="btn-cyber" onclick="showScreen('create'); initMap()">CREATE TARGET</button>
-                    <button class="btn-cyber" onclick="useExample()">SIMULATE SIGNAL</button>
+                    <!-- Simulated Signal Button Removed -->
                     <p id="scanStatus" style="margin-top: 10px; font-size: 0.8rem;"></p>
                 </div>
             </div>
@@ -720,7 +753,10 @@
                     onclick="showScreen('scan'); startCamera();">X</button>
             </div>
 
-            <div id="mapContainer"></div>
+            <div id="mapContainer">
+                <!-- Crosshair Overlay -->
+                <div class="map-crosshair"></div>
+            </div>
 
             <div class="creator-form">
                 <input type="text" id="targetNameInput" class="input-cyber"
@@ -1071,7 +1107,6 @@
         showScreen('scan');
         // --- QR Creator Logic ---
         let map = null;
-        let marker = null;
         let selectedLocation = null;
 
         function initMap() {
@@ -1089,22 +1124,22 @@
                 maxZoom: 19
             }).addTo(map);
 
-            map.on('click', function (e) {
-                const lat = e.latlng.lat;
-                const lon = e.latlng.lng;
-
-                if (marker) {
-                    marker.setLatLng([lat, lon]);
-                } else {
-                    marker = L.marker([lat, lon]).addTo(map);
-                }
-
-                selectedLocation = { lat, lon };
-                document.getElementById('selectedCoords').innerHTML = `SEL_LAT: ${lat.toFixed(5)}<br>SEL_LON: ${lon.toFixed(5)}`;
+            map.on('move', function () {
+                const center = map.getCenter();
+                updateSelection(center.lat, center.lng);
             });
+
+            // Initial selection
+            const initialCenter = map.getCenter();
+            updateSelection(initialCenter.lat, initialCenter.lng);
 
             // Invalidate size after transition to ensure tiles load
             setTimeout(() => map.invalidateSize(), 500);
+        }
+
+        function updateSelection(lat, lon) {
+            selectedLocation = { lat, lon };
+            document.getElementById('selectedCoords').innerHTML = `SEL_LAT: ${lat.toFixed(5)}<br>SEL_LON: ${lon.toFixed(5)}`;
         }
 
         function generateQR() {
