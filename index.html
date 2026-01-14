@@ -226,12 +226,14 @@
 
         .hud-bottom-bar {
             text-align: center;
-            background: rgba(0, 0, 0, 0.6);
-            border: 1px solid var(--neon-blue);
+            background: rgba(0, 0, 0, 0.4);
+            border-top: 2px solid var(--neon-cyan);
+            border-bottom: 2px solid var(--neon-cyan);
             padding: 15px;
             margin-top: auto;
             backdrop-filter: blur(5px);
-            clip-path: polygon(10% 0, 90% 0, 100% 100%, 0% 100%);
+            /* Removed clip-path and blue colors */
+            box-shadow: 0 0 10px var(--neon-cyan);
         }
 
         .metric-group {
@@ -247,7 +249,7 @@
 
         .metric-label {
             font-size: 0.7rem;
-            color: var(--neon-blue);
+            color: var(--neon-cyan);
             letter-spacing: 2px;
         }
 
@@ -717,11 +719,10 @@
             document.getElementById('headingDisplay').textContent = Math.round(heading).toString().padStart(3, '0') + '°';
 
             // 3. Update Visuals
-            // Rotate the compass ring so user's heading is always UP (which is 0deg for CSS rotate?)
-            // Actually, usually a compass rotates AGAINST the heading so North stays North.
-            // If I face North (0), ring is 0. If I face East (90), North should be at -90 (Left).
+            // Rotate the compass ring so user's heading is always UP
+            // The ring is already centered by flexbox in .hud-center, so NO TRANSLATE needed.
             const ringRotation = -heading;
-            document.getElementById('compassRing').style.transform = `translate(-50%, -50%) rotate(${ringRotation}deg)`;
+            document.getElementById('compassRing').style.transform = `rotate(${ringRotation}deg)`;
 
             // Rotate target arrow.
             // The arrow is inside the ring. If ring rotates -heading, 
