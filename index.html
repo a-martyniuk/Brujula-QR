@@ -1174,8 +1174,8 @@
 
             new QRCode(qrContainer, {
                 text: payload,
-                width: 256,
-                height: 256,
+                width: 512,  // Increased from 256 for better detection
+                height: 512, // Increased from 256 for better detection
                 colorDark: "#000000",  // BLACK (Standard)
                 colorLight: "#ffffff", // WHITE (Standard)
                 correctLevel: QRCode.CorrectLevel.H
