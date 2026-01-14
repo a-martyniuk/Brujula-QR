@@ -575,12 +575,20 @@
             const code = jsQR(imageData.data, imageData.width, imageData.height);
 
             if (code) {
+                // Visual feedback that something was seen
+                const statusEl = document.getElementById('scanStatus');
+                statusEl.textContent = 'QR DETECTED - ANALYZING...';
+                statusEl.style.color = 'var(--neon-orange)';
+                console.log('QR Code Detection:', code.data);
+
                 try {
                     // Try parsing JSON first
                     const data = JSON.parse(code.data);
                     if (data.lat && data.lon) {
                         lockTarget(data);
                         return;
+                    } else {
+                        throw new Error('Missing coordinates');
                     }
                 } catch (e) {
                     // Try lat,lon format
@@ -590,8 +598,23 @@
                         const lon = parseFloat(coords[1].trim());
                         if (!isNaN(lat) && !isNaN(lon)) {
                             lockTarget({ lat, lon, name: 'UNK_LOC' });
+                            return;
                         }
                     }
+
+                    // If we reach here, data is invalid
+                    statusEl.textContent = 'ERR: INVALID DATA FORMAT';
+                    statusEl.style.color = 'var(--neon-red)';
+                }
+            } else {
+                const statusEl = document.getElementById('scanStatus');
+                if (statusEl.textContent.includes('ERR') ||
+                    statusEl.textContent.includes('DETECTED')) {
+                    // Reset after 1.5s
+                    setTimeout(() => {
+                        statusEl.textContent = 'OPTICS ONLINE // SEARCHING...';
+                        statusEl.style.color = 'var(--neon-cyan)';
+                    }, 1500);
                 }
             }
         }
