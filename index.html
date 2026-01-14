@@ -818,8 +818,14 @@
         }
 
         function showScreen(screenName) {
-            document.querySelectorAll('#app > div').forEach(el => el.classList.remove('active-screen'));
+            // Explicitly hide all screens
+            document.getElementById('scanScreen').classList.remove('active-screen');
+            document.getElementById('compassScreen').classList.remove('active-screen');
+            document.getElementById('createScreen').classList.remove('active-screen');
+
+            // Show the requested screen
             document.getElementById(screenName + 'Screen').classList.add('active-screen');
+
             if (screenName === 'compass') {
                 navCoordsEl.innerHTML = `TGT_LAT: ${target?.lat?.toFixed(4) || '???'}<br>TGT_LON: ${target?.lon?.toFixed(4) || '???'}`;
             }
