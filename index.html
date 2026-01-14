@@ -177,6 +177,8 @@
             margin-bottom: 20px;
             position: relative;
             /* For Crosshair */
+            pointer-events: auto;
+            /* ENABLE MAP INTERACTION (DRAG/PAN) */
         }
 
         .map-crosshair {
@@ -759,8 +761,7 @@
             </div>
 
             <div class="creator-form">
-                <input type="text" id="targetNameInput" class="input-cyber"
-                    placeholder="ENTER TARGET NAME (e.g. HOME BASE)">
+                <!-- TARGET NAME REMOVED - AUTO GENERATED -->
                 <div class="hud-coords" id="selectedCoords">
                     SEL_LAT: --.----<br>
                     SEL_LON: --.----
@@ -1143,7 +1144,14 @@
         }
 
         function generateQR() {
-            const name = document.getElementById('targetNameInput').value.trim() || 'UNKNOWN_TARGET';
+            // Auto-generate name based on coords (e.g. TGT-3475-5840)
+            let name = 'UNKNOWN_TARGET';
+            if (selectedLocation) {
+                const latCode = Math.abs(selectedLocation.lat).toFixed(2).replace('.', '');
+                const lonCode = Math.abs(selectedLocation.lon).toFixed(2).replace('.', '');
+                name = `TGT-${latCode}-${lonCode}`;
+            }
+
             if (!selectedLocation) {
                 alert('SELECT A LOCATION ON THE MAP FIRST');
                 return;
@@ -1190,7 +1198,7 @@
                     if (navigator.share) {
                         await navigator.share({
                             title: 'NAV DATA',
-                            text: 'COORDINATES FOR TARGET: ' + document.getElementById('targetNameInput').value,
+                            text: 'COORDINATES FOR TARGET',
                             files: [file]
                         });
                     } else {
